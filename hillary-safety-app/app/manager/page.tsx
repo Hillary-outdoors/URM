@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, getMe } from '@/lib/supabase';
+import { Logo } from '@/components/Logo';
 import { INT_SELECT, shapeInt, lateMinutes, lateLevel, beep, nzToday, hm } from '@/lib/util';
 import Today from '@/components/manager/Today';
 import History from '@/components/manager/History';
@@ -84,7 +85,7 @@ export default function ManagerApp() {
   return (
     <>
       <div className="appbar">
-        <h1>Hillary Outdoors <span>Safety System</span></h1><small>Manager</small>
+        <Logo size={30} /><small>Hillary Outdoors · Manager</small>
         <div className="sp">
           <button className={'btn small' + (alerts ? ' alert-on' : '')} onClick={alerts ? () => setAlerts(false) : enableAlerts}>{alerts ? 'Overdue alerts: On' : 'Turn on overdue alerts'}</button>
           <button className="btn small" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button>
