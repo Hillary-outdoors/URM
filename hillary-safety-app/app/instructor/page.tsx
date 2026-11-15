@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { supabase, getMe } from '@/lib/supabase';
 import { SAFE, PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows } from '@/lib/util';
 import { Pill, StatusPill, Picker, Quick, TickGrid } from '@/components/ui';
+import { Mark } from '@/components/Logo';
+import DayBoard from '@/components/DayBoard';
 
 const AMP_FIELDS: [string, string][] = [
   ['activity_description', 'Activity description'], ['location', 'Location'], ['emergency_response', 'Emergency response'],
@@ -17,24 +19,26 @@ export default function InstructorApp() {
   const router = useRouter();
   const [me, setMe] = useState<any>(null);
   const [tab, setTab] = useState('home');
-  const [d, setD] = useState<any>({ activities: [], instructors: [], amps: [], comps: [], ints: [] });
+  const [d, setD] = useState<any>({ activities: [], instructors: [], amps: [], comps: [], ints: [], centres: [] });
   const [err, setErr] = useState('');
 
   const load = useCallback(async (m: any) => {
-    const [act, ins, amp, comp, ints] = await Promise.all([
+    const [act, ins, amp, comp, ints, cen] = await Promise.all([
       supabase.from('activities').select('*').eq('active', true).order('name'),
       supabase.from('instructors').select('id,name,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
       supabase.from('v_amp_status').select('*').eq('instructor_id', m.id).gt('version', 0).order('title'),
       supabase.from('v_competency_status').select('*').eq('instructor_id', m.id).order('level').order('name'),
       supabase.from('intentions').select(INT_SELECT).order('date', { ascending: false }).limit(500),
+      supabase.from('centres').select('*').order('id'),
     ]);
-    const bad = [act, ins, amp, comp, ints].find((r) => r.error);
+    const bad = [act, ins, amp, comp, ints, cen].find((r) => r.error);
     if (bad) setErr(bad.error!.message);
     setD({
       activities: act.data || [], instructors: ins.data || [], amps: amp.data || [],
       meId: m.id,
       comps: (comp.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
       ints: (ints.data || []).map(shapeInt),
+      centres: cen.data || [],
     });
   }, []);
 
@@ -55,20 +59,21 @@ export default function InstructorApp() {
   return (
     <>
       <div className="appbar">
-        <div><small>Instructor</small><h1>{me.name}</h1></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Mark size={26} /><div><small>Instructor</small><h1>{me.name}</h1></div></div>
         <div className="sp"><button className="btn small" onClick={() => setTab('account')}>Account</button></div>
       </div>
       <div className="narrow">
         {err && <div className="inc">{err}</div>}
         {tab === 'home' && <Home d={d} open={open} todoAmps={todoAmps} go={setTab} />}
         {tab === 'intent' && <Intent me={me} d={d} open={open} reload={reload} />}
+        {tab === 'day' && <DayBoard me={me} centres={d.centres} />}
         {tab === 'progress' && <Progress me={me} d={d} reload={reload} />}
         {tab === 'amps' && <Amps d={d} reload={reload} />}
         {tab === 'logbook' && <Logbook me={me} d={d} />}
         {tab === 'account' && <Account />}
       </div>
       <nav className="inav">
-        {[['home', 'Home'], ['intent', 'Intention'], ['progress', 'Progress'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
+        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Progress'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
         ))}
       </nav>
@@ -125,6 +130,11 @@ function Home({ d, open, todoAmps, go }: any) {
         {!!next.length && <div className="sec">Working on</div>}
         {next.map((c: any) => <div className="check" key={c.comp_id}><span className="dot wait">→</span><span>{c.name} (L{c.level}) · {c.done} of {c.total} ticks</span></div>)}
         <button className="btn small" style={{ marginTop: 6 }} onClick={() => go('progress')}>See all progress</button>
+      </div>
+      <div className="card">
+        <h3>The rest of the day</h3>
+        <p className="muted" style={{ margin: '0 0 8px' }}>See who else is out, what they are doing and when they are due back.</p>
+        <button className="btn" onClick={() => go('day')}>Open the day board</button>
       </div>
     </>
   );
