@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, configured } from '@/lib/supabase';
+import { Logo } from '@/components/Logo';
 
 /** One login screen for everyone. The account decides which side you land on. */
 export default function Login() {
@@ -19,8 +20,8 @@ export default function Login() {
 
   return (
     <div className="login">
-      <h1 style={{ fontSize: 22 }}>Hillary Outdoors</h1>
-      <p className="muted" style={{ marginTop: 2 }}>Safety System</p>
+      <Logo size={40} sub="Universal Record Management App" />
+      <p className="muted" style={{ marginTop: 8 }}>Hillary Outdoors</p>
       {!configured && <div className="inc">The app is not connected to Supabase yet. Add the three environment variables in Vercel, then redeploy. See docs/SETUP_GUIDE.md.</div>}
       <form className="card" onSubmit={go}>
         <label className="f" htmlFor="em">Email</label>
