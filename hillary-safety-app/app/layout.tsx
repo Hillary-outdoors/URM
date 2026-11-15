@@ -2,11 +2,13 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Hillary Outdoors Safety System',
-  description: 'Intentions, competencies and AMPs for Hillary Outdoors staff.',
+  title: 'URMA · Hillary Outdoors',
+  description: 'Universal Record Management App: intentions, competencies and AMPs for Hillary Outdoors staff.',
+  applicationName: 'URMA',
+  appleWebApp: { capable: true, title: 'URMA', statusBarStyle: 'default' },
   robots: { index: false, follow: false },
 };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1d3557' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
