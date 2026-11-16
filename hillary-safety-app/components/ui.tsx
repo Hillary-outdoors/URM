@@ -49,18 +49,27 @@ export const Modal = ({ open, children }: any) => (
   <div className={'sform' + (open ? ' on' : '')} role="dialog" aria-modal="true"><div className="box">{open ? children : null}</div></div>
 );
 
-const TYPES: [string, string, string][] = [['self', 'needs_self', 'Self'], ['obs1', 'needs_obs1', 'Obs1'], ['assess1', 'needs_assess1', 'Site1'], ['assess2', 'needs_assess2', 'Site2']];
-export const TICK_NAME: Record<string, string> = { self: 'Self', obs1: 'Obs 1', assess1: 'Site 1', assess2: 'Site 2' };
+/** The six kinds of box a competency line can have, in the order they are shown. */
+export const TICKS = ['self', 'obs1', 'obs2', 'assess1', 'assess2', 'assess3'] as const;
+export const TICK_NAME: Record<string, string> = { self: 'Self', obs1: 'Obs 1', obs2: 'Obs 2', assess1: 'Assessor', assess2: 'Assessor 2', assess3: 'Assessor 3' };
+/** The name printed on the paper form for a box (each competency has its own), or the standard name. */
+export const tickName = (type: string, labels?: Record<string, string> | null) => (labels && labels[type]) || TICK_NAME[type] || type;
 
 /**
- * The competency folder page: one row per line, four boxes per row.
- * Grey = not required. Green = ticked. `canClick` decides which boxes are buttons.
+ * The competency folder page: one row per line, with the boxes that competency uses
+ * (up to six: Self, two observations, three assessor boxes). Column names come from the paper form.
+ * Grey = not on the form for that line. Green = ticked. `canClick` decides which boxes are buttons.
  */
-export function TickGrid({ lines, has, canClick, onClick, hint }: {
+export function TickGrid({ lines, has, canClick, onClick, hint, labels, ini }: {
+  labels?: Record<string, string> | null;
   lines: any[]; has: (line: any, type: string) => boolean; canClick: (line: any, type: string) => boolean;
   onClick: (line: any, type: string, on: boolean) => void; hint?: (line: any, type: string) => string;
+  /** Initials to show inside a ticked box, as they are written on the paper form. */
+  ini?: (line: any, type: string) => string;
 }) {
+  const mark = (l: any, t: string) => { const s = ini?.(l, t) || ''; return s ? s.slice(0, 3) : '✓'; };
   let sec = '', el = '';
+  const TYPES = TICKS.filter((t) => lines.some((l) => l['needs_' + t])).map((t) => [t, 'needs_' + t, tickName(t, labels)] as [string, string, string]);
   return (
     <div>
       {lines.map((l) => {
@@ -68,16 +77,16 @@ export function TickGrid({ lines, has, canClick, onClick, hint }: {
         return (
           <div key={l.id}>
             {newSec && <div className="sec">{l.section}</div>}
-            {newEl && <><div className="el">{l.element}</div><div className="tkhead">{TYPES.map((t) => <span key={t[0]}>{t[2]}</span>)}</div></>}
+            {newEl && <><div className="el">{l.element}</div><div className="tkhead">{TYPES.map((t) => <span key={t[0]} title={t[2]}>{t[2]}</span>)}</div></>}
             <div className="ln">
               <span className="tx">{l.content}{l.auto_from_amp && <> <Pill>auto</Pill></>}</span>
               <span className="ticks">
                 {TYPES.map(([type, need]) => {
-                  if (!l[need]) return <span key={type} className="tk na" title="Not required" />;
+                  if (!l[need]) return <span key={type} className="tk na" title="Not on the form for this line" />;
                   const on = has(l, type);
                   return canClick(l, type)
-                    ? <button type="button" key={type} className={'tk' + (on ? ' on' : '')} title={hint?.(l, type)} aria-label={TICK_NAME[type] + (on ? ' ticked' : ' not ticked')} onClick={() => onClick(l, type, on)}>{on ? '✓' : ''}</button>
-                    : <span key={type} className={'tk ro' + (on ? ' on' : '')} title={l.auto_from_amp ? 'Ticks itself when the AMP is acknowledged' : 'Ticked by a manager'}>{on ? '✓' : ''}</span>;
+                    ? <button type="button" key={type} className={'tk' + (on ? ' on' : '')} title={hint?.(l, type)} aria-label={tickName(type, labels) + (on ? ' ticked' : ' not ticked')} onClick={() => onClick(l, type, on)}>{on ? mark(l, type) : ''}</button>
+                    : <span key={type} className={'tk ro' + (on ? ' on' : '')} title={hint?.(l, type) || (l.auto_from_amp ? 'Ticks itself when the AMP is acknowledged' : 'Ticked by a manager')}>{on ? mark(l, type) : ''}</span>;
                 })}
               </span>
             </div>
