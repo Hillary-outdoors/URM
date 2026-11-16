@@ -6,7 +6,8 @@ import { Pill } from '@/components/ui';
 
 const SECTIONS = ['Technical Competence', 'Group Management and Leadership', 'Instruction', 'SMS'];
 const HEAD: [string, string][] = [['scope', 'Scope'], ['prerequisites', 'Prerequisites'], ['assessment', 'Observation and assessment'], ['rcc_rule', 'Recognition of Current Competence']];
-const NEEDS: [string, string][] = [['needs_self', 'Self'], ['needs_obs1', 'Obs1'], ['needs_assess1', 'Site1'], ['needs_assess2', 'Site2']];
+const NEEDS: [string, string][] = [['needs_self', 'Self'], ['needs_obs1', 'Obs1'], ['needs_obs2', 'Obs2'], ['needs_assess1', 'Ass1'], ['needs_assess2', 'Ass2'], ['needs_assess3', 'Ass3']];
+const BOX: [string, string][] = [['self', 'Self'], ['obs1', 'Obs 1'], ['obs2', 'Obs 2'], ['assess1', 'Assessor'], ['assess2', 'Assessor 2'], ['assess3', 'Assessor 3']];
 
 /** Set up competencies and their lines. Edits save as you go. */
 export default function Competencies({ base, reload }: any) {
@@ -83,17 +84,21 @@ export default function Competencies({ base, reload }: any) {
             <div><label className="f" htmlFor="cv">Version</label><input id="cv" type="text" value={c.version} onChange={(e) => setC({ ...c, version: e.target.value })} onBlur={(e) => saveC({ version: e.target.value })} placeholder="2024, version 9" /></div>
           </div>
           {HEAD.map(([k, l]) => <div key={k}><label className="f" htmlFor={'cf-' + k}>{l}</label><textarea id={'cf-' + k} rows={2} value={c[k]} onChange={(e) => setC({ ...c, [k]: e.target.value })} onBlur={(e) => saveC({ [k]: e.target.value })} /></div>)}
+          <label className="f">Box names on the paper form (leave blank for the standard name)</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: '0 10px' }}>
+            {BOX.map(([k, l]) => <input key={id + k} type="text" aria-label={l + ' box name'} placeholder={l} defaultValue={(c.box_labels || {})[k] || ''} onBlur={(e) => { const b = { ...(c.box_labels || {}) }; if (e.target.value.trim()) b[k] = e.target.value.trim(); else delete b[k]; saveC({ box_labels: b }); }} />)}
+          </div>
           <p className="muted" style={{ fontSize: 13 }}>The activity link is what the intention check uses: someone is "Competent for Kayaking" when they are Competent on the lowest-level competency linked to Kayaking.</p>
 
           <h3 style={{ fontSize: 16, margin: '18px 0 2px' }}>Lines ({lines.length})</h3>
           <p className="muted" style={{ margin: '0 0 8px' }}>Edit the wording, or untick a box to grey it out for that line. "Auto" means the line ticks itself when the person has signed the activity's AMP.</p>
           <div className="scroll"><div style={{ minWidth: 760 }}>
-            <div className="lineedit" style={{ gridTemplateColumns: '150px 170px 1fr repeat(5,40px) 96px' }}>
+            <div className="lineedit" style={{ gridTemplateColumns: '150px 170px 1fr repeat(7,40px) 96px' }}>
               <span className="lehead" style={{ textAlign: 'left' }}>Section</span><span className="lehead" style={{ textAlign: 'left' }}>Heading</span><span className="lehead" style={{ textAlign: 'left' }}>Line</span>
               {NEEDS.map(([, l]) => <span className="lehead" key={l}>{l}</span>)}<span className="lehead">Auto</span><span />
             </div>
             {lines.map((l) => (
-              <div className="lineedit" key={l.id} style={{ gridTemplateColumns: '150px 170px 1fr repeat(5,40px) 96px' }}>
+              <div className="lineedit" key={l.id} style={{ gridTemplateColumns: '150px 170px 1fr repeat(7,40px) 96px' }}>
                 <select aria-label="Section" value={l.section} onChange={(e) => saveL(l, { section: e.target.value })}>{[...new Set([...SECTIONS, l.section])].map((s) => <option key={s}>{s}</option>)}</select>
                 <input type="text" aria-label="Heading" defaultValue={l.element} onBlur={(e) => e.target.value !== l.element && saveL(l, { element: e.target.value })} />
                 <input type="text" aria-label="Line text" defaultValue={l.content} onBlur={(e) => e.target.value !== l.content && e.target.value.trim() && saveL(l, { content: e.target.value })} />
