@@ -218,18 +218,20 @@ function Intent({ me, d, open, reload }: any) {
 
 function Progress({ me, d, reload }: any) {
   const [comp, setComp] = useState<any>(null); const [lines, setLines] = useState<any[]>([]); const [ticks, setTicks] = useState<Set<string>>(new Set());
+  const [tickInfo, setTickInfo] = useState<Map<string, any>>(new Map());
   const [ampSigned, setAmpSigned] = useState(false);
   const open = useCallback(async (c: any) => {
     setComp(c);
     const { data: ls } = await supabase.from('competency_lines').select('*').eq('comp_id', c.comp_id).order('sort_order').order('id');
     const ids = (ls || []).map((l: any) => l.id);
-    const { data: so } = ids.length ? await supabase.from('comp_signoffs').select('line_id,tick_type').eq('instructor_id', me.id).in('line_id', ids) : { data: [] as any[] };
+    const { data: so } = ids.length ? await supabase.from('comp_signoffs').select('line_id,tick_type,initials,signed_by,observed_on').eq('instructor_id', me.id).in('line_id', ids) : { data: [] as any[] };
     setLines(ls || []); setTicks(new Set((so || []).map((s: any) => s.line_id + '|' + s.tick_type)));
+    setTickInfo(new Map((so || []).map((s: any) => [s.line_id + '|' + s.tick_type, s])));
     setAmpSigned(!!d.amps.find((a: any) => a.act_id === c.act_id)?.signed_version);
   }, [me.id, d.amps]);
   async function toggleSelf(l: any, _t: string, on: boolean) {
     if (on) await supabase.from('comp_signoffs').delete().eq('instructor_id', me.id).eq('line_id', l.id).eq('tick_type', 'self');
-    else await supabase.from('comp_signoffs').insert({ instructor_id: me.id, line_id: l.id, tick_type: 'self', source: 'self' });
+    else await supabase.from('comp_signoffs').insert({ instructor_id: me.id, line_id: l.id, tick_type: 'self', initials: me.initials || null, source: 'self' });
     await open(comp); reload();
   }
   if (!comp) return (
@@ -252,10 +254,12 @@ function Progress({ me, d, reload }: any) {
       <div className="card">
         <h3>{fresh.name} (L{fresh.level}) <StatusPill status={fresh.status} /></h3>
         <div>{fresh.done} of {fresh.total} ticks</div>
-        <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>Tick <b>Self</b> when you think you can do a line. It tells your trainer you are ready to be observed. Grey boxes are not required. The other boxes are ticked by a manager.</p>
+        <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>Tick <b>Self</b> when you think you can do a line. It tells your trainer you are ready to be observed. Grey boxes are not on the form for that line. The other boxes (observations and assessor) are ticked by a manager.</p>
       </div>
       <div className="card">
-        {lines.length ? <TickGrid lines={lines} has={(l, t) => (l.auto_from_amp ? ampSigned : ticks.has(l.id + '|' + t))} canClick={(l, t) => t === 'self' && !l.auto_from_amp} onClick={toggleSelf} />
+        {lines.length ? <TickGrid labels={fresh.box_labels} lines={lines} has={(l, t) => (l.auto_from_amp ? ampSigned : ticks.has(l.id + '|' + t))} canClick={(l, t) => t === 'self' && !l.auto_from_amp} onClick={toggleSelf}
+          ini={(l, t) => tickInfo.get(l.id + '|' + t)?.initials || ''}
+          hint={(l, t) => { const s = tickInfo.get(l.id + '|' + t); return s ? `${s.initials ? s.initials + ' · ' : ''}${s.signed_by || 'You'}${s.observed_on ? ' · ' + s.observed_on : ''}` : (t === 'self' ? 'Tick when you can do this' : 'Ticked by a manager'); }} />
           : <span className="muted">No lines loaded yet.</span>}
       </div>
     </>
