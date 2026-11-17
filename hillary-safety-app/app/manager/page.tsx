@@ -46,7 +46,9 @@ export default function ManagerApp() {
     getMe().then(async (r) => {
       if (!r) return router.replace('/login');
       if (r.me?.account_type !== 'manager') return router.replace('/instructor');
-      await loadBase(); setReady(true);
+      await loadBase();
+      setBase((b: any) => ({ ...b, me: r.me }));   // who is signed in, for anything that records an author
+      setReady(true);
     });
   }, [router, loadBase]);
 

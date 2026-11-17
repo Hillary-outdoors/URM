@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, getMe } from '@/lib/supabase';
-import { SAFE, PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows } from '@/lib/util';
+import { SAFE, PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows, STATUS } from '@/lib/util';
 import { Pill, StatusPill, Picker, Quick, TickGrid } from '@/components/ui';
+import TrainingLogForm from '@/components/TrainingLogForm';
 import { Mark } from '@/components/Logo';
 import DayBoard from '@/components/DayBoard';
 
@@ -23,15 +24,16 @@ export default function InstructorApp() {
   const [err, setErr] = useState('');
 
   const load = useCallback(async (m: any) => {
-    const [act, ins, amp, comp, ints, cen] = await Promise.all([
+    const [act, ins, amp, comp, ints, cen, all] = await Promise.all([
       supabase.from('activities').select('*').eq('active', true).order('name'),
-      supabase.from('instructors').select('id,name,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
+      supabase.from('instructors').select('id,name,initials,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
       supabase.from('v_amp_status').select('*').eq('instructor_id', m.id).gt('version', 0).order('title'),
       supabase.from('v_competency_status').select('*').eq('instructor_id', m.id).order('level').order('name'),
       supabase.from('intentions').select(INT_SELECT).order('date', { ascending: false }).limit(500),
       supabase.from('centres').select('*').order('id'),
+      supabase.from('competencies').select('id,name,level,centre_id').order('level').order('name'),
     ]);
-    const bad = [act, ins, amp, comp, ints, cen].find((r) => r.error);
+    const bad = [act, ins, amp, comp, ints, cen, all].find((r) => r.error);
     if (bad) setErr(bad.error!.message);
     setD({
       activities: act.data || [], instructors: ins.data || [], amps: amp.data || [],
@@ -39,6 +41,7 @@ export default function InstructorApp() {
       comps: (comp.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
       ints: (ints.data || []).map(shapeInt),
       centres: cen.data || [],
+      allComps: (all.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
     });
   }, []);
 
@@ -68,12 +71,13 @@ export default function InstructorApp() {
         {tab === 'intent' && <Intent me={me} d={d} open={open} reload={reload} />}
         {tab === 'day' && <DayBoard me={me} centres={d.centres} />}
         {tab === 'progress' && <Progress me={me} d={d} reload={reload} />}
+        {tab === 'tlog' && <TrainingLog me={me} d={d} reload={reload} />}
         {tab === 'amps' && <Amps d={d} reload={reload} />}
         {tab === 'logbook' && <Logbook me={me} d={d} />}
         {tab === 'account' && <Account />}
       </div>
       <nav className="inav">
-        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Competencies'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
+        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Competencies'], ['tlog', 'Training log'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
         ))}
       </nav>
@@ -212,6 +216,44 @@ function Intent({ me, d, open, reload }: any) {
         <div className={'msg ' + msg[0]}>{msg[1]}</div>
         <button className="btn primary" style={{ width: '100%' }} disabled={busy} onClick={send}>Send to Duty Manager</button>
       </div>
+    </>
+  );
+}
+
+/** Record a training session, and see the ones already written about you or by you. */
+function TrainingLog({ me, d, reload }: any) {
+  const [mine, setMine] = useState<any[]>([]);
+  const [done, setDone] = useState('');
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('training_logs')
+      .select('id,date,trainer,activity_text,outcome,summary,ticks_made,instructor_id,filled_by, training_log_comps(comp_id)')
+      .or(`instructor_id.eq.${me.id},filled_by.eq.${me.id}`).order('date', { ascending: false }).limit(60);
+    setMine(data || []);
+  }, [me.id]);
+  useEffect(() => { load(); }, [load]);
+  const compName = (id: number) => { const c = (d.allComps || []).find((x: any) => x.id === id); return c ? c.name + ' L' + c.level : ''; };
+  return (
+    <>
+      {done && <div className="hl">{done}</div>}
+      <TrainingLogForm me={me} people={d.instructors || []} comps={d.allComps || []}
+        onDone={(m: string) => { setDone(m); load(); reload?.(); }} />
+      <h3 style={{ marginTop: 18 }}>Sessions about you, and ones you wrote</h3>
+      {mine.length === 0 ? <p className="muted">Nothing yet.</p> : mine.map((l) => (
+        <div className="card" key={l.id} style={{ marginBottom: 8 }}>
+          <div className="rowflex" style={{ justifyContent: 'space-between' }}>
+            <b>{fd(l.date)} · {l.activity_text || 'Training'}</b>
+            <span>{l.outcome ? <Pill kind={STATUS[l.outcome] || 'mute'}>{l.outcome}</Pill> : null}</span>
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {l.instructor_id === me.id ? 'About you' : 'Written by you'} · trainer {l.trainer || 'not named'}
+            {l.ticks_made ? ' · ' + l.ticks_made + ' boxes ticked' : ''}
+          </div>
+          {(l.training_log_comps || []).length > 0 && <div style={{ marginTop: 4 }}>
+            {(l.training_log_comps || []).map((x: any) => <span key={x.comp_id} style={{ marginRight: 6 }}><Pill>{compName(x.comp_id)}</Pill></span>)}
+          </div>}
+          {l.summary && <p style={{ fontSize: 13.5, marginBottom: 0 }}>{l.summary}</p>}
+        </div>
+      ))}
     </>
   );
 }
