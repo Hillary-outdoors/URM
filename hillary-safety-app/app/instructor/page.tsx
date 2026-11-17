@@ -73,7 +73,7 @@ export default function InstructorApp() {
         {tab === 'account' && <Account />}
       </div>
       <nav className="inav">
-        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Progress'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
+        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Competencies'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
         ))}
       </nav>
