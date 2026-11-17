@@ -13,43 +13,43 @@ type Col = { key: string; kind: 'Competency' | 'AMP'; id: number; name: string; 
  */
 export default function MatrixTab({ base }: any) {
   const [who, setWho] = useState<string[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);      // 'act:1' | 'comp:2' | 'amp:3'
+  const [acts, setActs] = useState<number[]>([]);
+  const [amps, setAmps] = useState<number[]>([]);
+  const [comps, setComps] = useState<number[]>([]);
   const [cols, setCols] = useState<Col[]>([]);
   const [comp, setComp] = useState<Record<string, string>>({});
   const [amp, setAmp] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState<string[]>([]);
 
   const people = base.instructors.filter((p: any) => p.account_type === 'instructor' && p.employment !== 'Past staff');
-  const options = [
-    ...base.activities.filter((a: any) => a.active).map((a: any) => ({ id: 'act:' + a.id, label: 'Activity · ' + a.name })),
-    ...base.comps.map((c: any) => ({ id: 'comp:' + c.id, label: `Competency · ${c.name} (L${c.level})` })),
-    ...base.amps.map((m: any) => ({ id: 'amp:' + m.id, label: 'AMP · ' + m.title })),
-  ];
+  // the day-sheet descriptions first, then the AMP-shaped activities
+  const actOpts = [...base.activities].filter((a: any) => a.active)
+    .sort((a: any, b: any) => (b.preset ? 1 : 0) - (a.preset ? 1 : 0) || a.name.localeCompare(b.name))
+    .map((a: any) => ({ id: a.id, label: (a.preset ? '★ ' : '') + a.name }));
+  const ampOpts = base.amps.map((m: any) => ({ id: m.id, label: m.title }));
+  const compOpts = base.comps.map((c: any) => ({ id: c.id, label: `${c.name} (L${c.level})` }));
 
-  // Work out the columns: everything picked directly, plus whatever the picked activities ask for.
+  // Work out the columns: everything picked, plus whatever the picked activities ask for.
   useEffect(() => {
     (async () => {
-      const actIds = picked.filter((p) => p.startsWith('act:')).map((p) => +p.slice(4));
-      const reqs = actIds.length ? await loadRequirements(actIds) : {};
+      const reqs = acts.length ? await loadRequirements(acts) : {};
       const out: Col[] = []; const seen = new Set<string>(); const msgs: string[] = [];
       const add = (kind: Col['kind'], id: number, name: string, from?: string) => {
         const key = kind + ':' + id;
         if (seen.has(key)) return; seen.add(key); out.push({ key, kind, id, name, from });
       };
-      for (const p of picked) {
-        if (p.startsWith('comp:')) { const c = base.comps.find((x: any) => x.id === +p.slice(5)); if (c) add('Competency', c.id, `${c.name} (L${c.level})`, 'you picked it'); }
-        if (p.startsWith('amp:')) { const m = base.amps.find((x: any) => x.id === +p.slice(4)); if (m) add('AMP', m.id, m.title, 'you picked it'); }
-      }
-      for (const a of actIds) {
+      comps.forEach((id) => { const c = base.comps.find((x: any) => x.id === id); if (c) add('Competency', c.id, `${c.name} (L${c.level})`, 'you picked it'); });
+      amps.forEach((id) => { const m = base.amps.find((x: any) => x.id === id); if (m) add('AMP', m.id, m.title, 'you picked it'); });
+      for (const a of acts) {
         const an = base.activities.find((x: any) => x.id === a)?.name || 'activity';
         const r = reqs[a] || [];
-        if (!r.some((x: any) => x.kind === 'Competency' && !x.everyone)) msgs.push(`${an} has no competency linked to it yet, so only the AMP and the competencies everyone needs are being checked.`);
         if (!r.length) msgs.push(`${an} asks for nothing yet — no AMP and no competency are linked to it.`);
+        else if (!r.some((x: any) => x.kind === 'Competency' && !x.everyone)) msgs.push(`${an} has no competency of its own linked yet, so only its AMP and the competencies everyone needs are being checked.`);
         r.forEach((x: any) => add(x.kind, x.item_id, x.item_name, x.everyone ? 'everyone needs it' : 'from ' + an));
       }
       setCols(out); setNote([...new Set(msgs)]);
     })();
-  }, [picked, base.activities, base.comps, base.amps]);
+  }, [acts, amps, comps, base.activities, base.comps, base.amps]);
 
   // Look up each person against each column.
   useEffect(() => {
@@ -81,15 +81,19 @@ export default function MatrixTab({ base }: any) {
 
   return (
     <div className="mpanel">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '0 20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: '0 16px' }}>
         <div><label className="f" style={{ marginTop: 0 }}>Instructors</label>
           <Picker options={people.map((p: any) => ({ id: p.id, label: p.name }))} value={who} onChange={setWho} placeholder="Search instructors…" /></div>
-        <div><label className="f" style={{ marginTop: 0 }}>Activities, competencies and AMPs</label>
-          <Picker options={options} value={picked} onChange={setPicked} placeholder="Search — type cave, rock, a person's trip…" /></div>
+        <div><label className="f" style={{ marginTop: 0 }}>Activity <span className="muted">(a preset)</span></label>
+          <Picker options={actOpts} value={acts} onChange={setActs} placeholder="O'cave, BB, SOT Tokaanu…" /></div>
+        <div><label className="f" style={{ marginTop: 0 }}>AMPs</label>
+          <Picker options={ampOpts} value={amps} onChange={setAmps} placeholder="Search AMPs…" /></div>
+        <div><label className="f" style={{ marginTop: 0 }}>Competencies</label>
+          <Picker options={compOpts} value={comps} onChange={setComps} placeholder="Search competencies…" /></div>
       </div>
       <p className="muted" style={{ fontSize: 13, margin: '8px 0 0', maxWidth: '80ch' }}>
-        Pick an activity as a shortcut and it adds the competencies and AMPs it needs. For a one-off day, pick the
-        competencies and AMPs straight from the same box.
+        An activity is only a preset: picking one fills in the AMPs and competencies it stands for. For a day that is
+        not on the list, leave it empty and pick the AMPs and competencies yourself.
       </p>
       {note.map((n) => <div key={n} className="inc" style={{ marginTop: 8 }}>{n}</div>)}
 
@@ -110,7 +114,7 @@ export default function MatrixTab({ base }: any) {
               </tbody>
             </table>
           </div>
-        ) : <p className="muted">Add at least one instructor and one activity, competency or AMP.</p>}
+        ) : <p className="muted">Add at least one instructor, and an activity, AMP or competency.</p>}
       </div>
       <p className="muted" style={{ fontSize: 13, margin: '10px 0 0', maxWidth: '80ch' }}>
         A competency column shows where that person is up to. An AMP column shows whether they have signed the current
