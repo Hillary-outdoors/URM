@@ -1,8 +1,8 @@
 -- URMA · step 19 · Point each person at the login they already have
 --
 -- These Supabase accounts already exist; this only tells the app which instructor row each one is.
--- Nobody's password changes and no account is created. Safe to run again.
--- A name that has no account, or an account whose email is not listed here, is simply left alone.
+-- No password changes, no new accounts. Safe to run again.
+-- A person with no account, or an account that matches nobody, is left alone.
 begin;
 
 create temp table _login (name text, email text) on commit drop;
@@ -26,12 +26,14 @@ insert into _login values
   ('Hayden Devine','haydend@hillaryoutdoors.co.nz'),
   ('Heather Niccoll','heather@hillaryoutdoors.co.nz'),
   ('Huw Standen','huw.standen@hotmail.com'),
+  ('Jai Canobie-Harris','jai@hillaryoutdoors.co.nz'),
   ('Josh Hart','joshh@hillaryoutdoors.co.nz'),
   ('Joshua Murphy','joshuam@hillaryoutdoors.co.nz'),
   ('Julian Vanderput','julianv@hillaryoutdoors.co.nz'),
   ('Lauren Harris','laurenh@hillaryoutdoors.co.nz'),
   ('Leo Jones','ljonesbeach@gmail.com'),
   ('Lina Vansevenant','linav@hillaryoutdoors.co.nz'),
+  ('Matt Bray','matthew@hillaryoutdoors.co.nz'),
   ('Melissa Harris','melissah@hillaryoutdoors.co.nz'),
   ('Owen Raffan','owen.raffan@gmail.com'),
   ('Patsy Ryan-Betts','patsyb@hillaryoutdoors.co.nz'),
@@ -51,8 +53,8 @@ where lower(i.name) = lower(v.name)
 
 commit;
 
--- who is now linked, and who still has no login:
-select i.name, i.employment, coalesce(u.email, '— no login yet —') as login
+-- who is linked now, and who still has no login:
+select i.name, i.employment, i.centre_id, coalesce(u.email, '— no login yet —') as login
 from instructors i
 left join auth.users u on u.id = i.auth_user_id
 where i.account_type = 'instructor' and i.employment <> 'Past staff'

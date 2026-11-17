@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { SAFE, PLAN_QUICK, AIM_QUICK, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
 import { Pill, Picker, Quick, Matrix } from '@/components/ui';
+import ExtraReqs from '@/components/manager/ExtraReqs';
 
 const active = (base: any) => base.instructors.filter((p: any) => p.account_type === 'instructor' && p.employment !== 'Past staff');
 const pOpts = (base: any) => active(base).map((p: any) => ({ id: p.id, label: p.name + (p.centre_id ? ' · ' + (base.centres.find((c: any) => c.id === p.centre_id)?.name || '') : '') }));
@@ -109,6 +110,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
       <label className="f" htmlFor="ea">Outcome of the day</label><input id="ea" type="text" value={d.outcome_of_day} onChange={(e) => set('outcome_of_day', e.target.value)} />
       <label className="f" htmlFor="epl">Plan or route</label><textarea id="epl" rows={2} value={d.plan} onChange={(e) => set('plan', e.target.value)} />
       {!!is.length && <div className="inc"><b>To check</b>{is.map((x) => <div key={x}>{x}</div>)}</div>}
+      <ExtraReqs base={base} intentionId={i.id} who={d.who} />
       <div style={{ marginTop: 10 }}><Matrix who={d.who.map((w: string) => ({ id: w, name: nm(w) }))} acts={d.acts.map((a: number) => ({ id: a, name: an(a) }))} checks={checks} /></div>
       <div className="check" style={{ marginTop: 10 }}><input type="checkbox" id="eb" checked={d.briefed} onChange={(e) => set('briefed', e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="eb">Briefed by DM</label></div>
       <label className="f" htmlFor="en">DM notes on this intention</label><textarea id="en" rows={2} value={d.dm_notes} onChange={(e) => set('dm_notes', e.target.value)} />
