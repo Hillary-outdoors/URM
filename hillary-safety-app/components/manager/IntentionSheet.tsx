@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { SAFE, PLAN_QUICK, AIM_QUICK, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
+import { PLAN_QUICK, AIM_QUICK, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
 import { Pill, Picker, Quick, Matrix } from '@/components/ui';
 import ExtraReqs from '@/components/manager/ExtraReqs';
 
@@ -32,6 +32,8 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
   const [d, setD] = useState<any>({ who: i.who, acts: i.acts, overnight: i.overnight, started_at: hm(i.started_at), due_by: hm(i.due_by), pax: i.pax ?? '', outcome_of_day: i.outcome_of_day || '', plan: i.plan || '', group_name: i.group_name || '', dm_notes: i.dm_notes || '', briefed: i.briefed });
   const [judge, setJudge] = useState(''); const [judge0, setJudge0] = useState('');
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} }); const [comms, setComms] = useState<any[]>([]); const [err, setErr] = useState('');
+  const [opts, setOpts] = useState<any[]>([]);   // the call list, from the database
+  useEffect(() => { supabase.from('call_options').select('*').order('sort_order').then(({ data }) => setOpts(data || [])); }, []);
   const set = (k: string, v: any) => setD((x: any) => ({ ...x, [k]: v }));
   const nm = (id: string) => base.instructors.find((x: any) => x.id === id)?.name || '?';
   const an = (id: number) => base.activities.find((x: any) => x.id === id)?.name || '?';
@@ -42,7 +44,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     supabase.from('comms_log').select('*').eq('date', i.date).eq('centre_id', i.centre_id).in('instructor_id', i.who.length ? i.who : ['00000000-0000-0000-0000-000000000000']).order('time').then(({ data }) => setComms(data || []));
   }, [i]);
 
-  const need = needsCall(d, base.activities), open = i.status !== 'Closed', is = issues(d, checks, base.instructors, base.activities);
+  const open = i.status !== 'Closed', is = issues(d, checks, base.instructors, base.activities);
   const late = lateMinutes(i, base.activities), lv = lateLevel(late);
 
   function diffs() {
@@ -50,7 +52,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     c('instructors', [...i.who].map(nm).sort().join(' + '), [...d.who].map(nm).sort().join(' + '));
     c('activities', [...i.acts].map(an).sort().join(' + '), [...d.acts].map(an).sort().join(' + '));
     c('overnight', i.overnight ? 'yes' : 'no', d.overnight ? 'yes' : 'no');
-    c('started', hm(i.started_at), d.started_at); c('due', hm(i.due_by), need ? d.due_by : '');
+    c('started', hm(i.started_at), d.started_at); c('due', hm(i.due_by), d.due_by);
     c('participants', i.pax, d.pax); c('outcome of the day', i.outcome_of_day, d.outcome_of_day); c('plan', i.plan, d.plan);
     return o;
   }
@@ -58,7 +60,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     if (!d.who.length || !d.acts.length) { setErr('An intention needs at least one instructor and one activity.'); return false; }
     const df = diffs();
     const { error } = await supabase.from('intentions').update({
-      overnight: d.overnight, started_at: need ? d.started_at || null : null, due_by: need ? d.due_by || null : null, pax: d.pax === '' ? null : +d.pax,
+      overnight: d.overnight, started_at: d.started_at || null, due_by: d.due_by || null, pax: d.pax === '' ? null : +d.pax,
       outcome_of_day: d.outcome_of_day, plan: d.plan, group_name: d.group_name, dm_notes: d.dm_notes, briefed: d.briefed, ...extra,
     }).eq('id', i.id);
     if (error) { setErr(error.message); return false; }
@@ -71,9 +73,9 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     return true;
   }
   const act = async (extra?: any) => { if (await save(extra)) onDone(); };
-  async function callIn(as: string) {
+  async function callIn(as: string, closes?: boolean) {
     if (!(await save())) return;
-    const { error } = await supabase.rpc('call_in_safe', { p_intention: i.id, p_as: as });
+    const { error } = await supabase.rpc('log_call', { p_intention: i.id, p_as: as });
     if (error) setErr(error.message); else onDone();
   }
 
@@ -97,12 +99,11 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
       <label className="f">Instructors</label><Picker options={pOpts(base)} value={d.who} onChange={(v) => set('who', v)} placeholder="Search for an instructor…" />
       <label className="f">Activities</label><Picker options={aOpts(base)} value={d.acts} onChange={(v) => set('acts', v)} placeholder="Search for an activity…" />
       <div className="check"><input type="checkbox" id="eov" checked={d.overnight} onChange={(e) => set('overnight', e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="eov">Overnight trip</label></div>
-      {need ? (
-        <div className="grid2">
-          <div><label className="f" htmlFor="es">Started (logged when they call)</label><input id="es" type="time" value={d.started_at} onChange={(e) => set('started_at', e.target.value)} /></div>
-          <div><label className="f" htmlFor="ee">Due out or back by</label><input id="ee" type="time" value={d.due_by} onChange={(e) => set('due_by', e.target.value)} /></div>
-        </div>
-      ) : <small className="muted">No call-in or times needed for these activities.</small>}
+      <div className="grid2">
+        <div><label className="f" htmlFor="es">Started (logged when they call)</label><input id="es" type="time" value={d.started_at} onChange={(e) => set('started_at', e.target.value)} /></div>
+        <div><label className="f" htmlFor="ee">Due back by</label><input id="ee" type="time" value={d.due_by} onChange={(e) => set('due_by', e.target.value)} /></div>
+      </div>
+      {!d.due_by && <div className="hl">No time to be back by, so nothing will go overdue for this trip.</div>}
       <div className="grid2">
         <div><label className="f" htmlFor="ep">Participants</label><input id="ep" type="number" value={d.pax} onChange={(e) => set('pax', e.target.value)} /></div>
         <div><label className="f" htmlFor="eg">Group</label><input id="eg" type="text" value={d.group_name} onChange={(e) => set('group_name', e.target.value)} /></div>
@@ -120,13 +121,13 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
         <button className="btn primary" onClick={() => act()}>Save changes</button>
         {i.status === 'Waiting' && <button className="btn" onClick={() => act({ status: 'Approved' })}>Approve</button>}
       </div>
-      {open && (need ? (
+      {open && (
         <><label className="f" style={{ marginTop: 14 }}>Calls</label>
           <div className="rowflex">
             {!i.started_at && <button className="btn small primary" onClick={() => { set('started_at', nzNow()); act({ started_at: nzNow() }); }}>Log start now</button>}
-            {SAFE.map((s) => <button key={s} className="btn small" onClick={() => callIn(s)}>{s}</button>)}
+            {opts.map((o: any) => <button key={o.id} className={'btn small' + (o.closes_trip ? ' primary' : '')} onClick={() => callIn(o.words, o.closes_trip)}>{o.words}</button>)}
           </div></>
-      ) : <div style={{ marginTop: 14 }}><button className="btn small" onClick={() => callIn('Day finished')}>Close this intention</button></div>)}
+      )}
       <h3 style={{ fontSize: 15, margin: '18px 0 4px' }}>Comms</h3>
       {comms.length ? comms.map((c) => <div className="thread" key={c.id}><small>{hm(c.time)} · {nm(c.instructor_id)}</small>{c.entry}</div>) : <small className="muted">No comms logged for these instructors.</small>}
     </>
@@ -140,7 +141,7 @@ export function AddIntention({ base, centreId, onDone }: { base: any; centreId: 
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} }); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const set = (k: string, v: any) => setD((x: any) => ({ ...x, [k]: v }));
   useEffect(() => { loadChecks(d.who, d.acts).then(setChecks); }, [d.who, d.acts]);
-  const past = d.date < today, need = needsCall(d, base.activities);
+  const past = d.date < today;
   const nm = (id: string) => base.instructors.find((x: any) => x.id === id)?.name || '?';
   const an = (id: number) => base.activities.find((x: any) => x.id === id)?.name || '?';
 
@@ -149,9 +150,9 @@ export function AddIntention({ base, centreId, onDone }: { base: any; centreId: 
     setBusy(true);
     const row: any = {
       centre_id: centreId, date: d.date, overnight: d.overnight, pax: d.pax === '' ? null : +d.pax, outcome_of_day: d.outcome_of_day, plan: d.plan, group_name: d.group_name,
-      due_by: need ? d.due_by || null : null, dm_notes: 'Entered by manager',
+      due_by: d.due_by || null, dm_notes: 'Entered by manager',
     };
-    if (past) Object.assign(row, { status: 'Closed', entered_late: true, briefed: true, started_at: need ? d.started_at || null : null, called_in_at: need ? d.due_by || null : null, called_in_as: need ? 'Back at base' : 'Day finished' });
+    if (past) Object.assign(row, { status: 'Closed', entered_late: true, briefed: true, started_at: d.started_at || null, called_in_at: d.due_by || null, called_in_as: 'Back at base' });
     const { data, error } = await supabase.from('intentions').insert(row).select('id').single();
     const e2 = error || (await saveLinks(data!.id, d.who, d.acts));
     setBusy(false);
@@ -170,12 +171,11 @@ export function AddIntention({ base, centreId, onDone }: { base: any; centreId: 
       <label className="f">Activities</label><Picker options={aOpts(base)} value={d.acts} onChange={(v) => set('acts', v)} placeholder="Search for an activity…" />
       <div style={{ marginTop: 10 }}><Matrix who={d.who.map((w: string) => ({ id: w, name: nm(w) }))} acts={d.acts.map((a: number) => ({ id: a, name: an(a) }))} checks={checks} /></div>
       <div className="check"><input type="checkbox" id="nov" checked={d.overnight} onChange={(e) => set('overnight', e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="nov">Overnight trip</label></div>
-      {need && (
-        <div className="grid2">
-          {past && <div><label className="f" htmlFor="ns">Started</label><input id="ns" type="time" value={d.started_at} onChange={(e) => set('started_at', e.target.value)} /></div>}
-          <div><label className="f" htmlFor="ne">{past ? 'Called in at' : 'Due out or back by'}</label><input id="ne" type="time" value={d.due_by} onChange={(e) => set('due_by', e.target.value)} /></div>
-        </div>
-      )}
+      <div className="grid2">
+        {past && <div><label className="f" htmlFor="ns">Started</label><input id="ns" type="time" value={d.started_at} onChange={(e) => set('started_at', e.target.value)} /></div>}
+        <div><label className="f" htmlFor="ne">{past ? 'Called in at' : 'Due back by'}</label><input id="ne" type="time" value={d.due_by} onChange={(e) => set('due_by', e.target.value)} /></div>
+      </div>
+      {!past && !d.due_by && <div className="hl">Without a time to be back by, this trip will never show as overdue.</div>}
       <div className="grid2">
         <div><label className="f" htmlFor="np">Participants</label><input id="np" type="number" value={d.pax} onChange={(e) => set('pax', e.target.value)} /></div>
         <div><label className="f" htmlFor="ng">Group</label><input id="ng" type="text" value={d.group_name} onChange={(e) => set('group_name', e.target.value)} /></div>

@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { SAFE, INT_SELECT, shapeInt, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
+import { INT_SELECT, shapeInt, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
 import { Pill, Sheet } from '@/components/ui';
 import IntentionTable from './IntentionTable';
 import DayConditions from './DayConditions';
@@ -20,6 +20,9 @@ export default function Today({ base, pulse }: any) {
   const [sel, setSel] = useState<any>(null); const [adding, setAdding] = useState(false); const [calling, setCalling] = useState(0);
   const [c, setC] = useState({ time: '', who: '', entry: '' }); const [err, setErr] = useState('');
   const [sheet, setSheet] = useState(false);
+  const [opts, setOpts] = useState<any[]>([]);          // the call list, from the database
+  const [calls, setCalls] = useState<Record<number, any[]>>({});
+  const [note, setNote] = useState('');                 // free text for a call that is not on the list
 
   useEffect(() => {
     let saved = 0; try { saved = +(localStorage.getItem('centre') || 0); } catch (e) { /* ignore */ }
@@ -42,9 +45,17 @@ export default function Today({ base, pulse }: any) {
     if (i.error) setErr(i.error.message);
     const list = (i.data || []).map(shapeInt);
     setInts(list); setComms(m.data || []);
+    const ids = list.map((x: any) => x.id);
+    if (ids.length) {
+      const { data: cl } = await supabase.from('intention_calls').select('*').in('intention_id', ids).order('at');
+      const by: Record<number, any[]> = {};
+      (cl || []).forEach((x: any) => { (by[x.intention_id] ||= []).push(x); });
+      setCalls(by);
+    } else setCalls({});
     setChecks(await loadChecks([...new Set(list.flatMap((x: any) => x.who))] as string[], [...new Set(list.flatMap((x: any) => x.acts))] as number[]));
   }, [centre, today]);
   useEffect(() => { loadDay(); }, [loadDay]);
+  useEffect(() => { supabase.from('call_options').select('*').order('sort_order').then(({ data }) => setOpts(data || [])); }, []);
   useEffect(() => { load(); }, [load, pulse]);
 
   async function saveDay(patch: any) {
@@ -73,7 +84,14 @@ export default function Today({ base, pulse }: any) {
 
   const here = base.centres.find((x: any) => x.id === centre);   // what this centre's day sheet carries
   const logStart = async (i: any) => { await supabase.from('intentions').update({ started_at: nzNow() }).eq('id', i.id); load(); };
-  const callIn = async (i: any, as: string) => { const { error } = await supabase.rpc('call_in_safe', { p_intention: i.id, p_as: as }); if (error) setErr(error.message); setCalling(0); load(); };
+  /** Log whatever call just came in. The wording decides whether it also closes the trip. */
+  const callIn = async (i: any, words: string, closes?: boolean) => {
+    if (!words.trim()) return;
+    const { error } = await supabase.rpc('log_call', { p_intention: i.id, p_words: words, p_note: null, p_closes: closes ?? null });
+    if (error) setErr(error.message);
+    setCalling(0); setNote(''); load();
+  };
+  const undoCall = async (id: number) => { const { error } = await supabase.rpc('undo_call', { p_call: id }); if (error) setErr(error.message); load(); };
   async function addComms() {
     if (!c.entry.trim()) return;
     const { error } = await supabase.from('comms_log').insert({ date: today, centre_id: centre, time: c.time || nzNow(), instructor_id: c.who || null, entry: c.entry.trim() });
@@ -123,12 +141,35 @@ export default function Today({ base, pulse }: any) {
         {!!lateList(2).length && <div className="inc"><b>Red: not called in, more than 20 minutes overdue</b>{lateList(2).map(line)}</div>}
         {!!lateList(1).length && <div className="hl"><b>Yellow: not called in, more than 10 minutes overdue</b>{lateList(1).map(line)}</div>}
         <IntentionTable rows={ints} base={base} checks={checks} showDate={ints.some((i) => i.date !== today)} onOpen={setSel} actions={(i) => {
-          if (calling === i.id) return <div style={{ display: 'grid', gap: 4 }}>{SAFE.map((s) => <button key={s} className="btn small primary" onClick={() => callIn(i, s)}>{s}</button>)}</div>;
-          if (!needsCall(i, base.activities)) return <button className="btn small" onClick={() => callIn(i, 'Day finished')}>Close</button>;
-          return <>{!i.started_at && <button className="btn small primary" onClick={() => logStart(i)}>Log start</button>}
-            <button className={'btn small' + (i.started_at ? ' primary' : '')} onClick={() => setCalling(i.id)}>Call in safe</button></>;
+          const made = calls[i.id] || [];
+          if (calling === i.id) return (
+            <div style={{ display: 'grid', gap: 4, minWidth: 190 }}>
+              {opts.map((o) => (
+                <button key={o.id} className={'btn small' + (o.closes_trip ? ' primary' : '')}
+                  onClick={() => callIn(i, o.words, o.closes_trip)}>{o.words}</button>
+              ))}
+              <div className="rowflex" style={{ gap: 4 }}>
+                <input type="text" placeholder="Something else…" value={note} style={{ minWidth: 110 }}
+                  onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') callIn(i, note, false); }} />
+                <button className="btn small" onClick={() => callIn(i, note, false)}>Log</button>
+              </div>
+              <button className="btn small" onClick={() => { setCalling(0); setNote(''); }}>Cancel</button>
+            </div>
+          );
+          return <>
+            {!i.started_at && <button className="btn small primary" onClick={() => logStart(i)}>Log start</button>}
+            <button className={'btn small' + (i.started_at ? ' primary' : '')} onClick={() => setCalling(i.id)}>Take a call</button>
+            {made.length > 0 && <div style={{ fontSize: 11.5, marginTop: 4 }}>
+              {made.slice(-3).map((c: any) => (
+                <div key={c.id} className="muted">
+                  {new Date(c.at).toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Pacific/Auckland' })} {c.words}
+                  <button className="linkish" title="Remove this call" onClick={() => undoCall(c.id)}> ×</button>
+                </div>
+              ))}
+            </div>}
+          </>;
         }} />
-        <p className="muted" style={{ fontSize: 13, margin: '10px 0 0' }}>Only cave, water, mountain and overnight activities are timed and called in. An intention stays open until someone calls in safe. 10 minutes past the due time it turns yellow, 20 minutes past it turns red.</p>
+        <p className="muted" style={{ fontSize: 13, margin: '10px 0 0' }}>Every trip with a time to be back by is watched. Take as many calls through the day as come in — only "Back at base" closes the trip. 10 minutes past the due time it turns yellow, 20 minutes past it turns red.</p>
       </div>
 
       <div className="mpanel">

@@ -31,8 +31,12 @@ export const shapeInt = (r: any) => ({
 });
 
 /** Cave, water, mountain and overnight plans are the only ones that are timed and called in. */
-export const needsCall = (i: any, activities: any[]) =>
-  !!i.overnight || (i.acts || []).some((a: any) => (activities.find((x) => x.id === a)?.call_in_type || 'None') !== 'None');
+/**
+ * Does this trip owe a call? Every trip with a time to be back by does. It used to depend on the
+ * activity carrying a call type, which went quiet for anything not set up - this errs the other
+ * way and watches everything with a due time.
+ */
+export const needsCall = (i: any, _activities?: any[]) => !!i.overnight || !!i.due_by;
 
 /** Minutes past the due time with no call-in. Negative or -999 means not overdue. */
 export const lateMinutes = (i: any, activities: any[]) => {

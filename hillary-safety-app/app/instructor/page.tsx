@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, getMe } from '@/lib/supabase';
-import { SAFE, PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows, STATUS } from '@/lib/util';
+import { PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows, STATUS } from '@/lib/util';
 import { Pill, StatusPill, Picker, Quick, TickGrid } from '@/components/ui';
 import TrainingLogForm from '@/components/TrainingLogForm';
 import { Mark } from '@/components/Logo';
@@ -24,7 +24,7 @@ export default function InstructorApp() {
   const [err, setErr] = useState('');
 
   const load = useCallback(async (m: any) => {
-    const [act, ins, amp, comp, ints, cen, all] = await Promise.all([
+    const [act, ins, amp, comp, ints, cen, all, co] = await Promise.all([
       supabase.from('activities').select('*').eq('active', true).order('name'),
       supabase.from('instructors').select('id,name,initials,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
       supabase.from('v_amp_status').select('*').eq('instructor_id', m.id).gt('version', 0).order('title'),
@@ -32,8 +32,9 @@ export default function InstructorApp() {
       supabase.from('intentions').select(INT_SELECT).order('date', { ascending: false }).limit(500),
       supabase.from('centres').select('*').order('id'),
       supabase.from('competencies').select('id,name,level,centre_id').order('level').order('name'),
+      supabase.from('call_options').select('*').order('sort_order'),
     ]);
-    const bad = [act, ins, amp, comp, ints, cen, all].find((r) => r.error);
+    const bad = [act, ins, amp, comp, ints, cen, all, co].find((r) => r.error);
     if (bad) setErr(bad.error!.message);
     setD({
       activities: act.data || [], instructors: ins.data || [], amps: amp.data || [],
@@ -42,6 +43,7 @@ export default function InstructorApp() {
       ints: (ints.data || []).map(shapeInt),
       centres: cen.data || [],
       allComps: (all.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
+      callOptions: co.data || [],
     });
   }, []);
 
@@ -150,24 +152,26 @@ function Intent({ me, d, open, reload }: any) {
   const [aim, setAim] = useState(''); const [plan, setPlan] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
   const [notes, setNotes] = useState<Record<number, string>>({}); const [busy, setBusy] = useState(false);
   const act = (id: number) => d.activities.find((a: any) => a.id === id);
-  const need = ov || acts.some((a) => act(a)?.call_in_type !== 'None');
+  // Every trip gets a time to be back by. It is the only thing the overdue watch has to go on,
+  // so there is no such thing as a trip that does not need one.
   const compFor = (a: number) => d.comps.filter((c: any) => c.act_id === a).sort((x: any, y: any) => x.level - y.level)[0];
   const ampFor = (a: number) => d.amps.find((x: any) => x.act_id === a);
 
   async function send() {
     if (!acts.length) return setMsg(['bad', 'Pick at least one activity.']);
+    if (!due) return setMsg(['bad', 'Put in a time to be back by. Without one nobody is watching the clock for you.']);
     if (!me.centre_id) return setMsg(['bad', 'Your record has no centre set. Ask a manager to add it.']);
     setBusy(true);
     const { error } = await supabase.rpc('submit_intention', {
       p_centre: me.centre_id, p_date: nzToday(), p_acts: acts, p_with: buddy, p_overnight: ov,
-      p_due: need ? due : null, p_pax: pax ? +pax : null, p_outcome: aim, p_plan: plan,
+      p_due: due || null, p_pax: pax ? +pax : null, p_outcome: aim, p_plan: plan,
     });
     setBusy(false);
     if (error) return setMsg(['bad', error.message]);
     setActs([]); setBuddy([]); setOv(false); setAim(''); setPlan(''); setMsg(['ok', 'Sent to the Duty Manager.']); reload();
   }
-  async function callIn(i: any, as: string) {
-    const { error } = await supabase.rpc('call_in_safe', { p_intention: i.id, p_as: as, p_notes: notes[i.id] || null });
+  async function callIn(i: any, words: string, closes?: boolean) {
+    const { error } = await supabase.rpc('log_call', { p_intention: i.id, p_words: words, p_note: notes[i.id] || null, p_closes: closes ?? null });
     if (error) setMsg(['bad', error.message]); else reload();
   }
 
@@ -179,10 +183,12 @@ function Intent({ me, d, open, reload }: any) {
           <IntLine i={i} d={d} />
           <label className="f">Notes on the day (optional)</label>
           <textarea rows={2} value={notes[i.id] || ''} onChange={(e) => setNotes({ ...notes, [i.id]: e.target.value })} placeholder="Any changes, anything to pass on" />
-          {needsCall(i, d.activities) ? (
-            <><label className="f">Call in safe to end the activity</label>
-              <div className="grid2">{SAFE.map((s) => <button key={s} className="btn primary" onClick={() => callIn(i, s)}>{s}</button>)}</div></>
-          ) : <button className="btn primary" style={{ width: '100%', marginTop: 8 }} onClick={() => callIn(i, 'Day finished')}>Finished for the day</button>}
+          <label className="f">Make a call</label>
+          <div className="grid2">{(d.callOptions || []).map((o: any) => (
+            <button key={o.id} className={'btn' + (o.closes_trip ? ' primary' : '')}
+              onClick={() => callIn(i, o.words, o.closes_trip)}>{o.words}</button>
+          ))}</div>
+          <small className="muted">Only "Back at base" ends the trip. Everything else is logged and the DM sees it.</small>
         </div>
       ))}
       <div className="card">
@@ -204,10 +210,10 @@ function Intent({ me, d, open, reload }: any) {
         <label className="f">Working with</label>
         <Picker options={d.instructors.filter((p: any) => p.id !== me.id).map((p: any) => ({ id: p.id, label: p.name }))} value={buddy} onChange={setBuddy} placeholder="Search for an instructor…" />
         <div className="check"><input type="checkbox" id="iov" checked={ov} onChange={(e) => setOv(e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="iov">Overnight trip</label></div>
-        {need
-          ? <><label className="f" htmlFor="idue">Due out or back by</label><input id="idue" type="time" value={due} onChange={(e) => setDue(e.target.value)} />
-            <small className="muted">Call the DM when you start and again when you are out. The DM logs your start time.</small></>
-          : <small className="muted">No times needed. Only cave, water, mountain and overnight activities are called in.</small>}
+        <label className="f" htmlFor="idue">Due back by</label>
+        <input id="idue" type="time" value={due} onChange={(e) => setDue(e.target.value)} required />
+        <small className="muted">Every trip needs one. If you are not back by then the DM's screen turns yellow after
+          10 minutes and red after 20, until someone calls in.</small>
         <label className="f" htmlFor="ipax">Participants</label><input id="ipax" type="number" min={1} value={pax} onChange={(e) => setPax(e.target.value)} />
         <label className="f" htmlFor="iaim">Outcome of the day</label><input id="iaim" type="text" value={aim} onChange={(e) => setAim(e.target.value)} placeholder="What the group is working towards" />
         <Quick items={AIM_QUICK} onPick={(t) => setAim(aim.trim() ? aim.trim() + ', ' + t : t)} />
