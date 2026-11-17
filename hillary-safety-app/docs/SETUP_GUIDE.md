@@ -37,8 +37,8 @@ Keep a note open as you go. You will collect three values:
 ## Step 2. Build the database
 
 1. In Supabase, open the **SQL Editor** (left-hand menu).
-2. On your computer, open the `supabase` folder from this project. It has five files.
-3. For each of the **first four** files, in number order:
+2. On your computer, open the `supabase` folder from this project. It has six files.
+3. For each of the files **01, 02, 03, 04 and 06**, in that order:
    1. Open the file in Notepad (or any text editor), select everything and copy it.
    2. In the SQL Editor, start a new query, paste, and press **Run**.
    3. Wait for "Success" before doing the next file.
@@ -49,8 +49,9 @@ Keep a note open as you go. You will collect three values:
 | `02_security.sql` | Switches on the security rules. |
 | `03_views_and_functions.sql` | Adds the worked-out values (competency status, AMP up to date) and the instructor actions. |
 | `04_starter_data.sql` | Adds the two centres, Tongariro and Coromandel. |
+| `06_day_board.sql` | Adds the day board that instructors use to see who else is out. |
 
-Do not run file 5 yet.
+Do not run file 05 yet. It comes after the manager login exists.
 
 **If a file fails:** read the red message. The most common cause is running the files out of order, or running one twice. On a brand-new project it is safe to delete the project and start Step 1 again.
 
@@ -173,3 +174,22 @@ If a change breaks something, open Vercel → **Deployments**, find the last wor
 | Everything stopped working after a quiet week | A Free-plan Supabase project has paused | Open Supabase and press Restore. Move to the Pro plan to stop this |
 | No ding when someone is overdue | Alerts not turned on, tab closed, or device muted or asleep | Turn alerts on, keep the page open, check the volume |
 | A screen shows a red error message | A database rule refused the action, or a bug | Note the message and what you clicked, and report it |
+
+---
+
+## Loading the trial data (November 2026)
+
+Three files, run in this order in Supabase › SQL Editor (New query → paste the whole file → Run):
+
+1. `supabase/07_six_boxes.sql` — lets a competency line have up to six boxes (Self, two observations, three assessor boxes) and keeps each form's own box names.
+2. `supabase/08_trial_data_part1.sql` — people, qualifications, activities, AMPs, and the 62 competencies with their lines.
+3. `supabase/08_trial_data_part2.sql` — ticks read from the scanned folders, then the back-fill from the matrix. This one takes up to a minute.
+
+All three are safe to run again. Part 1 replaces the competencies (and so clears their ticks), so always run part 2 after part 1.
+They never touch logins, intentions, day sheets or the manager account. People are matched by name, so a person who already has a login keeps it.
+
+Where each tick came from is stored with it: `scan` (read from a paper folder, with the file and page), `backfill` (from the matrix), `manual`, `override`, `self` or `training_log`.
+
+Ticks from older versions of a form (2016, 2021) are carried onto the matching line of the 2024 form, so people keep what they earned and the app only ever shows the current version.
+
+Every tick now also carries the signer's initials, as on the paper form. The initials show inside the box and the full name, date and site show when you hover over it.

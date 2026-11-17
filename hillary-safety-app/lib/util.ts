@@ -61,7 +61,30 @@ export async function loadChecks(instructorIds: string[], actIds: number[]) {
   }
   return { comp, amp };
 }
-export type Checks = { comp: Record<string, string>; amp: Record<string, boolean> };
+export type Checks = { comp: Record<string, string>; amp: Record<string, boolean>; ready?: Record<string, { ready: boolean; missing: string }> };
+
+/**
+ * Everything an activity needs: the competencies and AMPs listed against it, plus the ones
+ * everyone needs. Returns whether each person is ready and what they are short of.
+ */
+export async function loadReady(instructorIds: string[], actIds: number[]) {
+  const ready: Record<string, { ready: boolean; missing: string }> = {};
+  if (instructorIds.length && actIds.length) {
+    const { data } = await supabase.from('v_activity_ready').select('instructor_id,act_id,ready,missing')
+      .in('instructor_id', instructorIds).in('act_id', actIds).limit(8000);
+    (data || []).forEach((r: any) => { ready[r.instructor_id + '|' + r.act_id] = { ready: !!r.ready, missing: r.missing || '' }; });
+  }
+  return ready;
+}
+
+/** What an activity asks for, in plain English. */
+export async function loadRequirements(actIds: number[]) {
+  if (!actIds.length) return {} as Record<number, any[]>;
+  const { data } = await supabase.from('v_activity_requirements').select('*').in('act_id', actIds).limit(4000);
+  const out: Record<number, any[]> = {};
+  (data || []).forEach((r: any) => { (out[r.act_id] ||= []).push(r); });
+  return out;
+}
 
 /** A list of plain-English problems with an intention's paperwork. Empty list = all clear. */
 export function issues(i: { who: string[]; acts: number[] }, checks: Checks, instructors: any[], activities: any[]) {

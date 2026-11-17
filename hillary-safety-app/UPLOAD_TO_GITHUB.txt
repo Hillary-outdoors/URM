@@ -1,0 +1,56 @@
+URMA · uploading this to GitHub
+================================
+
+This zip holds the COMPLETE app as it stands on 17 November 2026.
+Extracting it gives you these at the top level:
+
+    app/  components/  lib/  docs/  supabase/
+    package.json  package-lock.json  next.config.mjs  tsconfig.json
+    README.md  .env.example  .gitignore
+
+HOW TO TELL WHERE THEY GO
+-------------------------
+Open your repo's main page on github.com and look at the file list.
+
+  If you see  app, components, lib, supabase  listed there
+      -> the repo root IS the app.
+      -> Upload the CONTENTS of this zip (the folders above), NOT a folder
+         called hillary-safety-app. Putting them in a new folder would make a
+         second copy and Vercel would keep building the old one.
+
+  If you see a single folder called  hillary-safety-app  (or similar)
+      -> open that folder first, then upload the contents inside it.
+
+UPLOADING
+---------
+1. Repo main page (or the folder above) > Add file > Upload files.
+2. Drag in all the extracted folders and loose files at once.
+   GitHub keeps the folder paths and overwrites anything with the same name.
+3. Write a commit message, e.g. "URMA: six tick boxes, initials, activity requirements".
+4. Commit. Vercel redeploys on its own.
+
+ONE THING TO CLEAN UP
+---------------------
+GitHub's uploader overwrites and adds, but never deletes.
+If supabase/08_trial_data_part1.sql and 08_trial_data_part2.sql are still in your
+repo, they are the old two-big-files version and have been replaced by 10 to 18.
+Delete them in GitHub (open the file > bin icon) or just leave them: they are
+plain text and nothing reads them.
+
+WHAT IS NEW SINCE YOUR LAST UPLOAD
+----------------------------------
+  components/ui.tsx                  six tick boxes, box names from the form, initials in the box
+  components/manager/Profile.tsx     sign-off form asks for initials
+  components/manager/Competencies.tsx editor for the extra boxes and their names
+  components/manager/MatrixTab.tsx   "Who can run what" reads the activity requirements
+  app/instructor/page.tsx            initials on self-ticks, six boxes
+  app/globals.css                    vertical column headings
+  lib/util.ts                        loadReady / loadRequirements
+  docs/SETUP_GUIDE.md                how to load the data
+  supabase/00_check.sql              counts what is in the database
+  supabase/07_six_boxes.sql          six box types, box names, initials column
+  supabase/09_activity_requirements.sql  what each activity needs
+  supabase/10 to 18                  the trial data, in small files
+
+The SQL files are not used by the website. They live in the repo so the database
+build is version-controlled alongside the app; you run them in Supabase by hand.

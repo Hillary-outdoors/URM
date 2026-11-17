@@ -1,8 +1,10 @@
-# Hillary Outdoors Safety System
+# URMA
+
+**Universal Record Management App** — Hillary Outdoors.
 
 A web app for intentions, competencies and Activity Management Plans (AMPs).
 
-- **Instructors** (phone): send an intention, call in safe, read and sign AMPs, tick their own Self boxes, keep a logbook.
+- **Instructors** (phone): send an intention, call in safe, see the day board of who else is out, read and sign AMPs, tick their own Self boxes, keep a logbook.
 - **Managers** (laptop or phone): day sheet, open intentions with overdue alerts, comms log, sign-offs, AMP and competency editing, instructor logins, exports for audits and DOC.
 
 ## Start here
@@ -17,8 +19,8 @@ A web app for intentions, competencies and Activity Management Plans (AMPs).
 
 | Folder or file | What it is |
 |---|---|
-| `supabase/` | Five SQL files that build the database. Run once, in order, in Supabase. |
-| `app/` | The screens: `login`, `instructor`, `manager`, and one server API (`api/instructors`). |
+| `supabase/` | Six SQL files that build the database. Run once, in order, in Supabase. |
+| `app/` | The screens: `login`, `instructor`, `manager`, and one server API (`api/instructors`). Also the icon, home-screen icon and manifest. |
 | `components/` | The building blocks of the screens. `components/manager/` has one file per manager tab. |
 | `lib/` | The Supabase connection and shared helpers (dates, overdue rules, exports). |
 | `docs/` | The setup guide and the security and backups guide. |
@@ -34,6 +36,7 @@ A web app for intentions, competencies and Activity Management Plans (AMPs).
 
 ## Rules the system applies
 
+- Instructors see everyone's plans for a day on the day board, but not the DM's private notes.
 - Only cave, water, mountain and overnight activities are timed and called in.
 - An intention stays open until someone calls in safe.
 - Yellow alert at 10 minutes past the due time, red at 20.

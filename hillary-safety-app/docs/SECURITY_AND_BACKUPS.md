@@ -17,6 +17,7 @@ Be clear-eyed about this before relying on it.
 | Rules live in the database | Who can see or change each row is enforced by Supabase itself (`supabase/02_security.sql`). Even someone who bypassed the app would hit the same rules. |
 | Nothing without a login | A person who is not signed in can read nothing. |
 | Two account types only | Instructors see their own records. The manager account sees everything. |
+| The day board shows only what it should | Instructors can see everyone's plans for a day, but the view they read (`v_day_board`) does not contain the DM's notes or the notes written after the day, and nothing can be changed through it. |
 | Instructors cannot sign themselves off | They can add or remove only their own Self ticks. Every other tick needs the manager account, a name and a reason. |
 | AMP signatures cannot be faked | Signing goes through one database function that always records the current version. |
 | The change log cannot be edited | Rows can be added but never changed or deleted through the app. |

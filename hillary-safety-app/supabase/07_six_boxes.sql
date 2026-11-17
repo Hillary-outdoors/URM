@@ -28,6 +28,7 @@ alter table qualifications_held add column if not exists notes text;
 
 -- 5. Work out the status again, now counting all six box types.
 --    Indirect = every Self and Observation box ticked. Competent = every box ticked.
+drop view if exists v_activity_ready;
 drop view if exists v_competency_status;
 create view v_competency_status with (security_invoker = true) as
 with required as (

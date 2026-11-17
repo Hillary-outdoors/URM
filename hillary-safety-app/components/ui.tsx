@@ -108,9 +108,11 @@ export function Matrix({ who, acts, checks }: { who: any[]; acts: any[]; checks:
           {who.map((w) => (
             <tr key={w.id}><th>{w.name}</th>
               {acts.map((a) => {
-                const k = w.id + '|' + a.id, amp = checks.amp[k];
-                return <td key={a.id}><StatusPill status={checks.comp[k]} />
-                  <small className={amp ? 'okc' : 'noc'}>{amp === undefined ? 'No AMP yet' : amp ? '✓ AMP signed' : '✗ AMP not signed'}</small></td>;
+                const k = w.id + '|' + a.id, amp = checks.amp[k], rd = checks.ready?.[k];
+                return <td key={a.id} title={rd ? (rd.ready ? 'Has everything this activity asks for' : 'Still needs — ' + rd.missing) : undefined}>
+                  <StatusPill status={checks.comp[k]} />
+                  <small className={amp ? 'okc' : 'noc'}>{amp === undefined ? 'No AMP yet' : amp ? '✓ AMP signed' : '✗ AMP not signed'}</small>
+                  {rd && <small className={rd.ready ? 'okc' : 'noc'}>{rd.ready ? '✓ Ready' : '✗ ' + (rd.missing || '').split(' · ').length + ' missing'}</small>}</td>;
               })}
             </tr>
           ))}
