@@ -115,7 +115,19 @@ insert into log_activity_map (phrase, comp_name, level, note) values
   ('lesson planning',  null, null, 'training, not a competency'),
   ('morning theme',    null, null, 'training, not a competency'),
   ('safety management',null, null, 'training, not a competency'),
-  ('other',            null, null, 'training, not a competency')
+  ('other',            null, null, 'training, not a competency'),
+  ('duty manager induction',   null, null, 'training, not a competency'),
+  ('train the trainers',       null, null, 'training, not a competency'),
+  ('staff training',           null, null, 'training, not a competency'),
+  ('presentation',             null, null, 'training, not a competency'),
+  ('driving',                  null, null, 'training, not a competency'),
+  ('catering',                 null, null, 'training, not a competency'),
+  ('tikanga',                  null, null, 'training, not a competency'),
+  ('phec refresher',           null, null, 'training, not a competency'),
+  ('continued proffesioanl development', null, null, 'spelled as it is on the log'),
+  ('continued proffesioanl developmnet', null, null, 'spelled as it is on the log'),
+  ('cpd',                      null, null, 'training, not a competency'),
+  ('microsoft teams and associated apps training.', null, null, 'training, not a competency')
 on conflict (phrase) do nothing;
 
 -- ---------- Initials from a name, when the person has none recorded

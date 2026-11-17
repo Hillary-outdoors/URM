@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { fd, STATUS } from '@/lib/util';
 import { Pill, Picker } from '@/components/ui';
+import readXlsxFile from 'read-excel-file/browser';
 
 const dmName = () => { try { return localStorage.getItem('dmName') || ''; } catch (e) { return ''; } };
 
@@ -44,6 +45,10 @@ const isoDate = (s: string) => {
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   const d = new Date(v); return isNaN(+d) ? null : d.toISOString().slice(0, 10);
 };
+/** A spreadsheet hands back real dates and numbers; a CSV hands back text. Make everything text. */
+const cell = (v: any) => v == null ? '' : v instanceof Date
+  ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`
+  : String(v);
 const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 
 /** One letter different: Shephard and Shepherd are the same person. */
@@ -108,7 +113,22 @@ export default function TrainingLogs({ base, reload }: any) {
   async function readFile(file: File) {
     setErr(''); setDone(''); setBusy(true);
     try {
-      const rows = parseCsv(await file.text());
+      // Straight from Smartsheet's Export to Excel, or a CSV if that is what you have.
+      // A workbook can hold more than one sheet — the log export carries a Comments sheet
+      // alongside the log itself — so take whichever sheet has the log's own columns on it.
+      let sheets: string[][][];
+      if (/\.xlsx?$/i.test(file.name)) {
+        const raw: any = await readXlsxFile(file);
+        const many = Array.isArray(raw) && raw.length > 0 && !Array.isArray(raw[0]) && Array.isArray(raw[0]?.data);
+        sheets = (many ? raw.map((s: any) => s.data) : [raw]).map((g: any[][]) => g.map((r) => r.map(cell)));
+      } else sheets = [parseCsv(await file.text())];
+
+      const looksRight = (g: string[][]) => {
+        if (!g || g.length < 2) return false;
+        const h = g[0].map((x) => norm(x));
+        return h.includes(norm('Date')) && h.includes(norm('Trainee'));
+      };
+      const rows = sheets.find(looksRight) || sheets[0] || [];
       if (rows.length < 2) throw new Error('That file has no rows in it.');
       const head = rows[0].map((h) => norm(h));
       const col = (...names: string[]) => { for (const n of names) { const i = head.indexOf(norm(n)); if (i > -1) return i; } return -1; };
@@ -230,7 +250,8 @@ export default function TrainingLogs({ base, reload }: any) {
       {tab === 'import' && <div className="card" style={{ maxWidth: 700 }}>
         <h3>Load the training log</h3>
         <p className="muted" style={{ fontSize: 13.5 }}>
-          In Smartsheet: <b>File › Export › Export to CSV</b>, then pick that file here. Loading an entry
+          In Smartsheet: <b>File › Export › Export to Excel</b>, then pick that file here (a CSV works
+          too). Loading an entry
           ticks its boxes, with the trainer on the entry as the signer and their initials in each box.
           Competent ticks every box, Indirect the Self and Observation boxes, Direct the Self box.
           Anything else is kept as a record and ticks nothing.
@@ -240,7 +261,7 @@ export default function TrainingLogs({ base, reload }: any) {
           never undo a later sign-off. Where a competency exists at two levels, the lowest one the person
           has not finished is the one that gets ticked. Each entry has an Undo.
         </p>
-        <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); }} />
+        <input type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); }} />
         <div className="msg bad">{err}</div>
         {plan && <>
           <h3 style={{ marginTop: 14 }}>{plan.rows.length} entries ready</h3>

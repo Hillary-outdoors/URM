@@ -26,8 +26,12 @@ export default function Profile({ base }: any) {
   const loadComp = useCallback(async () => {
     if (!pid || !cid) { setLines([]); return; }
     const { data: ls } = await supabase.from('competency_lines').select('*').eq('comp_id', cid).order('sort_order').order('id');
-    const ids = (ls || []).map((l: any) => l.id);
-    const { data: so } = ids.length ? await supabase.from('comp_signoffs').select('*').eq('instructor_id', pid).in('line_id', ids) : { data: [] as any[] };
+    // Ask for this person's ticks on this competency, rather than listing two thousand line
+    // numbers in the web address. Same answer, one indexed lookup, a URL that fits.
+    const { data: so } = (ls || []).length
+      ? await supabase.from('comp_signoffs').select('*, competency_lines!inner(comp_id)')
+          .eq('instructor_id', pid).eq('competency_lines.comp_id', cid)
+      : { data: [] as any[] };
     const act = base.comps.find((c: any) => c.id === cid)?.act_id;
     const { data: am } = act ? await supabase.from('v_amp_status').select('signed_version').eq('instructor_id', pid).eq('act_id', act).maybeSingle() : { data: null as any };
     setLines(ls || []); setTicks(Object.fromEntries((so || []).map((s: any) => [s.line_id + '|' + s.tick_type, s]))); setAmpSigned(!!am?.signed_version);

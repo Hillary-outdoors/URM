@@ -590,7 +590,19 @@ insert into log_activity_map (phrase, comp_name, level, note) values
   ('lesson planning',  null, null, 'training, not a competency'),
   ('morning theme',    null, null, 'training, not a competency'),
   ('safety management',null, null, 'training, not a competency'),
-  ('other',            null, null, 'training, not a competency')
+  ('other',            null, null, 'training, not a competency'),
+  ('duty manager induction',   null, null, 'training, not a competency'),
+  ('train the trainers',       null, null, 'training, not a competency'),
+  ('staff training',           null, null, 'training, not a competency'),
+  ('presentation',             null, null, 'training, not a competency'),
+  ('driving',                  null, null, 'training, not a competency'),
+  ('catering',                 null, null, 'training, not a competency'),
+  ('tikanga',                  null, null, 'training, not a competency'),
+  ('phec refresher',           null, null, 'training, not a competency'),
+  ('continued proffesioanl development', null, null, 'spelled as it is on the log'),
+  ('continued proffesioanl developmnet', null, null, 'spelled as it is on the log'),
+  ('cpd',                      null, null, 'training, not a competency'),
+  ('microsoft teams and associated apps training.', null, null, 'training, not a competency')
 on conflict (phrase) do nothing;
 
 -- ---------- Initials from a name, when the person has none recorded
@@ -754,3 +766,15 @@ select name, employment from instructors
 
 -- 5. The training log lookup, ready for the Smartsheet export.
 select count(*) as phrases_known, count(comp_name) as point_at_a_competency from log_activity_map;
+
+-- 6. How long a real search takes. Look in the Messages / Notices pane under the results.
+--    Before this file is run it is seconds. After it, it should be tens of milliseconds.
+do $$
+declare t timestamptz; n integer; who uuid;
+begin
+  select id into who from instructors where account_type = 'instructor' order by name limit 1;
+  t := clock_timestamp();
+  select count(*) into n from v_competency_status where instructor_id = who;
+  raise notice 'One instructor against all competencies: % rows in % ms',
+    n, round(extract(epoch from (clock_timestamp() - t)) * 1000);
+end $$;

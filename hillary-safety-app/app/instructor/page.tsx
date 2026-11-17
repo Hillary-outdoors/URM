@@ -223,8 +223,11 @@ function Progress({ me, d, reload }: any) {
   const open = useCallback(async (c: any) => {
     setComp(c);
     const { data: ls } = await supabase.from('competency_lines').select('*').eq('comp_id', c.comp_id).order('sort_order').order('id');
-    const ids = (ls || []).map((l: any) => l.id);
-    const { data: so } = ids.length ? await supabase.from('comp_signoffs').select('line_id,tick_type,initials,signed_by,observed_on').eq('instructor_id', me.id).in('line_id', ids) : { data: [] as any[] };
+    // One indexed lookup instead of a web address listing every line number on the form.
+    const { data: so } = (ls || []).length
+      ? await supabase.from('comp_signoffs').select('line_id,tick_type,initials,signed_by,observed_on, competency_lines!inner(comp_id)')
+          .eq('instructor_id', me.id).eq('competency_lines.comp_id', c.comp_id)
+      : { data: [] as any[] };
     setLines(ls || []); setTicks(new Set((so || []).map((s: any) => s.line_id + '|' + s.tick_type)));
     setTickInfo(new Map((so || []).map((s: any) => [s.line_id + '|' + s.tick_type, s])));
     setAmpSigned(!!d.amps.find((a: any) => a.act_id === c.act_id)?.signed_version);
