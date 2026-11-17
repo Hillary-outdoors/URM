@@ -8,7 +8,9 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: 'URMA', statusBarStyle: 'default' },
   robots: { index: false, follow: false },
 };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1d3557' };
+// viewportFit lets the page use the whole screen on a notched phone; the CSS then keeps
+// the top bar and the bottom nav clear of the notch and the home bar.
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1d3557', viewportFit: 'cover' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

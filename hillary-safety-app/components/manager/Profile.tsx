@@ -42,10 +42,15 @@ export default function Profile({ base }: any) {
   const current = levels.find((x) => x.all.some((s) => s.status !== 'Competent')) || levels[levels.length - 1];
 
   const autoIni = (n: string) => (n || '').split(/[ -]+/).filter(Boolean).map((w) => w[0]).join('').toUpperCase().slice(0, 3);
+  // Anyone on the staff list can be the signer, managers included. The initials that go in the
+  // box come from their own record, so nobody types them and two people never share a pair.
+  const staff = base.instructors.filter((x: any) => x.employment !== 'Past staff');
+  const signer = (name: string) => staff.find((x: any) => x.name === name);
+  const iniOf = (name: string) => (signer(name)?.initials || autoIni(name) || '').toUpperCase().slice(0, 3);
   function clickTick(l: any, type: string, on: boolean) {
     setErr('');
     if (on) setForm({ mode: 'remove', l, type, tick: ticks[l.id + '|' + type], reason: '', by: dmName() });
-    else setForm({ mode: 'add', l, type, by: dmName(), ini: autoIni(dmName()), date: nzToday(), site: '', based: 'Observed in person', note: '', all: false });
+    else setForm({ mode: 'add', l, type, by: dmName(), ini: iniOf(dmName()), date: nzToday(), site: '', based: 'Observed in person', note: '', all: false });
   }
   async function submit() {
     const f = form, who = p.name + ' · ' + comp.name + ' (L' + comp.level + ')';
@@ -55,7 +60,7 @@ export default function Profile({ base }: any) {
       await logChange(`${who} · removed ${tickName(f.type, comp?.box_labels)} tick on "${f.l.content}"`, f.reason, f.by);
     } else if (f.mode === 'add') {
       const site = f.type.startsWith('assess');
-      if (!f.by.trim() || !(f.ini || '').trim() || f.note.trim().length < 5 || (site && !f.site.trim())) return setErr('Fill in who signed it off, their initials' + (site ? ', the site' : '') + ' and a short note.');
+      if (!f.by.trim() || !(f.ini || '').trim() || f.note.trim().length < 5 || (site && !f.site.trim())) return setErr('Pick who signed it off' + (site ? ', fill in the site' : '') + ' and add a short note.');
       const need = 'needs_' + f.type;
       const targets = f.all ? lines.filter((x) => x.element === f.l.element && x.section === f.l.section && !x.auto_from_amp && x[need] && !ticks[x.id + '|' + f.type]) : [f.l];
       const { error } = await supabase.from('comp_signoffs').upsert(targets.map((x) => ({
@@ -68,7 +73,7 @@ export default function Profile({ base }: any) {
       if (!f.by.trim() || f.reason.trim().length < 5) return setErr('Fill in who is signing off and the reason.');
       const rows: any[] = [];
       lines.filter((l) => !l.auto_from_amp).forEach((l) => TICKS.forEach((t) => {
-        if (l['needs_' + t] && !ticks[l.id + '|' + t]) rows.push({ instructor_id: pid, line_id: l.id, tick_type: t, signed_by: f.by, initials: autoIni(f.by), observed_on: nzToday(), source: 'override', reason: f.reason });
+        if (l['needs_' + t] && !ticks[l.id + '|' + t]) rows.push({ instructor_id: pid, line_id: l.id, tick_type: t, signed_by: f.by, initials: iniOf(f.by), observed_on: nzToday(), source: 'override', reason: f.reason });
       }));
       if (rows.length) { const { error } = await supabase.from('comp_signoffs').upsert(rows, { onConflict: 'instructor_id,line_id,tick_type' }); if (error) return setErr(error.message); }
       await logChange(`${who} · whole competency signed off by manager override (${rows.length} boxes ticked)`, f.reason, f.by);
@@ -128,8 +133,10 @@ export default function Profile({ base }: any) {
           {f.mode === 'remove' && f.tick && <small className="muted">Signed by {f.tick.signed_by || 'the instructor (Self)'}{f.tick.observed_on ? ' on ' + fd(f.tick.observed_on) : ''}. {f.tick.reason}</small>}
           {f.mode === 'override' && <div className="hl" style={{ margin: '8px 0' }}>This ticks every remaining box on this competency and makes {p?.name} Competent. Use it for Recognition of Current Competence or when records exist elsewhere.</div>}
           <div className="grid2">
-            <div><label className="f" htmlFor="sfby">{f.mode === 'remove' ? 'Your name' : 'Signed off by'}</label><input id="sfby" type="text" value={f.by} onChange={(e) => { setF('by', e.target.value); if (f.mode === 'add') setF('ini', autoIni(e.target.value)); }} /></div>
-            {f.mode === 'add' && <div><label className="f" htmlFor="sfi">Initials (go in the box)</label><input id="sfi" type="text" maxLength={3} value={f.ini || ''} onChange={(e) => setF('ini', e.target.value.toUpperCase())} /></div>}
+            <div><label className="f">{f.mode === 'remove' ? 'Your name' : 'Signed off by'}</label>
+              <Picker single options={staff.map((x: any) => ({ id: x.name, label: x.name + (x.initials ? ' (' + x.initials + ')' : '') }))} value={f.by ? [f.by] : []}
+                onChange={(v) => setForm({ ...form, by: v[0] || '', ini: iniOf(v[0] || '') })} placeholder="Search for the person signing…" />
+              {f.mode === 'add' && f.by && <small className="muted">{f.ini} goes in the box</small>}</div>
             {f.mode === 'add' && <div><label className="f" htmlFor="sfd">Date observed</label><input id="sfd" type="date" max={nzToday()} value={f.date} onChange={(e) => setF('date', e.target.value)} /></div>}
           </div>
           {f.mode === 'add' && <>

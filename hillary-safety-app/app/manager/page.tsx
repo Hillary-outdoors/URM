@@ -13,9 +13,10 @@ import Amps from '@/components/manager/Amps';
 import Competencies from '@/components/manager/Competencies';
 import People from '@/components/manager/People';
 import Export from '@/components/manager/Export';
+import TrainingLogs from '@/components/manager/TrainingLogs';
 
 const TABS: [string, string, string?][] = [
-  ['today', "Today's intentions"], ['history', 'Intention history'], ['matrix', 'Who can run what'], ['profile', 'Instructor profile'], ['log', 'Change log'],
+  ['today', "Today's intentions"], ['history', 'Intention history'], ['matrix', 'Who can run what'], ['profile', 'Instructor profile'], ['logs', 'Training log'], ['log', 'Change log'],
   ['amps', 'AMPs', 'Edit'], ['comps', 'Competencies'], ['people', 'Instructors'], ['export', 'Export', 'Audit'],
 ];
 
@@ -106,6 +107,7 @@ export default function ManagerApp() {
         {tab === 'history' && <History {...p} />}
         {tab === 'matrix' && <MatrixTab {...p} />}
         {tab === 'profile' && <Profile {...p} />}
+        {tab === 'logs' && <TrainingLogs {...p} />}
         {tab === 'log' && <ChangeLog />}
         {tab === 'amps' && <Amps {...p} />}
         {tab === 'comps' && <Competencies {...p} />}

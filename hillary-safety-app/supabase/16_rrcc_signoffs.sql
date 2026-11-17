@@ -25,7 +25,6 @@ insert into _rcc values
   ('Amy Brown','TL2-07','amy_brown.pdf p54'),
   ('Amy Brown','TL2-13','amy_brown.pdf p61'),
   ('Amy Brown','TL2-23','amy_brown.pdf p70'),
-  ('Amy Brown','TL3-18','amy_brown.pdf p121'),
   ('Amy Brown','TL4-07','amy_brown.pdf p117'),
   ('Aqua Peal Hughes','TL1-03','Aqua.pdf p5'),
   ('Aqua Peal Hughes','TL1-06','Aqua.pdf p8'),
@@ -66,7 +65,6 @@ insert into _rcc values
   ('Flynn Taylor','TL1-03','Flynn.pdf p1'),
   ('Flynn Taylor','TL1-17','Flynn.pdf p15'),
   ('Flynn Taylor','TL1-28','Flynn.pdf p26'),
-  ('Flynn Taylor','TL2-13','Flynn.pdf p50'),
   ('Grace Saywell','TL1-03','Grace.pdf p5'),
   ('Grace Saywell','TL1-14','Grace.pdf p16'),
   ('Grace Saywell','TL1-17','Grace.pdf p19'),
@@ -128,4 +126,4 @@ commit;
 
 -- what landed:
 select count(*) as rrcc_signoffs from comp_signoffs where reason like 'Completed/RRCC%';
--- 106 competencies were marked that way
+-- 104 competencies were marked that way

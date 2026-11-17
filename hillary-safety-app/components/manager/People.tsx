@@ -17,7 +17,9 @@ const log = (what: string) => supabase.from('change_log').insert({ kind: 'Instru
 export default function People({ base, reload }: any) {
   const [f, setF] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [show, setShow] = useState('current');
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
-  const list = base.instructors.filter((p: any) => p.account_type === 'instructor' && (show === 'all' || p.employment !== 'Past staff'));
+  const all = base.instructors.filter((p: any) => p.account_type === 'instructor');
+  const nologin = all.filter((p: any) => !p.auth_user_id && p.employment !== 'Past staff');
+  const list = show === 'nologin' ? nologin : all.filter((p: any) => show === 'all' || p.employment !== 'Past staff');
   const blank = { isNew: true, name: '', initials: '', email: '', password: '', centre_id: base.centres[0]?.id || '', employment: 'Staff', start_date: nzToday() };
 
   async function save() {
@@ -41,7 +43,12 @@ export default function People({ base, reload }: any) {
         if (!r.ok && was.auth_user_id) { setBusy(false); return setErr('Details saved, but the login could not be switched: ' + r.error); }
         await log(`${f.name.trim()}: ${was.employment} → ${f.employment}`);
       }
-      if (f.password) {
+      if (!was.auth_user_id && (f.email || '').trim()) {
+        // Someone who came in from the matrix import: make their login now.
+        const r = await api('PUT', { instructor_id: f.id, email: f.email, password: f.password });
+        if (!r.ok) { setBusy(false); return setErr(r.error); }
+        await log(`Created a login for ${f.name.trim()} (${String(f.email).trim().toLowerCase()})`);
+      } else if (f.password) {
         const r = await api('PATCH', { instructor_id: f.id, password: f.password });
         if (!r.ok) { setBusy(false); return setErr(r.error); }
         await log(`Reset password for ${f.name.trim()}`);
@@ -55,7 +62,9 @@ export default function People({ base, reload }: any) {
     <div className="mpanel">
       <div className="filters">
         <button className="btn primary" onClick={() => { setErr(''); setF(blank); }}>+ Add instructor</button>
-        <div className="seg"><button className={show === 'current' ? 'on' : ''} onClick={() => setShow('current')}>Current</button><button className={show === 'all' ? 'on' : ''} onClick={() => setShow('all')}>Include past staff</button></div>
+        <div className="seg"><button className={show === 'current' ? 'on' : ''} onClick={() => setShow('current')}>Current</button>
+          <button className={show === 'nologin' ? 'on' : ''} onClick={() => setShow('nologin')}>No login yet ({nologin.length})</button>
+          <button className={show === 'all' ? 'on' : ''} onClick={() => setShow('all')}>Include past staff</button></div>
       </div>
       <div className="scroll"><table className="m">
         <thead><tr><th>Name</th><th>Type</th><th>Centre</th><th>Start date</th><th>Login</th><th></th></tr></thead>
@@ -83,9 +92,13 @@ export default function People({ base, reload }: any) {
             <label className="f" htmlFor="pm">Email (their login)</label><input id="pm" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} />
             <label className="f" htmlFor="pw">Starting password (10 characters or more)</label><input id="pw" type="text" value={f.password} onChange={(e) => set('password', e.target.value)} />
             <small className="muted">Give them this password in person. They can change it under Account once they sign in. A new instructor starts with every competency at Not started and every AMP waiting to be signed.</small>
-          </> : <>
+          </> : f.auth_user_id ? <>
             <label className="f" htmlFor="pw">Reset password (leave blank to keep it)</label><input id="pw" type="text" value={f.password} onChange={(e) => set('password', e.target.value)} placeholder="10 characters or more" />
             {f.employment === 'Past staff' && <small className="muted">Past staff keep all their records but their login is switched off and they drop out of the search lists.</small>}
+          </> : <>
+            <label className="f" htmlFor="pm">Email (their login)</label><input id="pm" type="email" value={f.email || ''} onChange={(e) => set('email', e.target.value)} placeholder="first.last@hillaryoutdoors.co.nz" />
+            <label className="f" htmlFor="pw">Starting password (10 characters or more)</label><input id="pw" type="text" value={f.password} onChange={(e) => set('password', e.target.value)} />
+            <small className="muted">{f.name} is on the list from the matrix import but cannot sign in yet. Saving this creates their login and ties it to this record. Give them the password in person; they change it under Account.</small>
           </>}
           <div className="msg bad">{err}</div>
           <button className="btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>

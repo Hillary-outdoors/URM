@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
  * key is used, and it never leaves the server.
  *
  *   POST  /api/instructors  create an instructor and their login
+ *   PUT   /api/instructors  give a login to someone already on the list
  *   PATCH /api/instructors  reset a password, or switch a login off or on
  *
  * Every call must come from a logged-in manager.
@@ -50,6 +51,51 @@ export async function POST(req: Request) {
   }).select().single();
   if (e2) { await db.auth.admin.deleteUser(created.user.id); return bad(e2.message); }
   return NextResponse.json({ instructor: row });
+}
+
+/**
+ * Everyone imported from the competency matrix is on the list without a login.
+ * This gives one of them an email and a password and ties the two records together.
+ * If a login with that email already exists it is reused, so running this twice
+ * cannot leave a stray account behind.
+ */
+export async function PUT(req: Request) {
+  const db = admin();
+  if (!db) return bad('The server is missing SUPABASE_SECRET_KEY. Add it in Vercel and redeploy.', 500);
+  if (!(await requireManager(req, db))) return bad('Only a manager can do this.', 403);
+
+  const b = await req.json().catch(() => ({}));
+  const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || '');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return bad('That email address does not look right.');
+  if (password.length < 10) return bad('The starting password must be at least 10 characters.');
+
+  const { data: row } = await db.from('instructors').select('id, name, auth_user_id').eq('id', b.instructor_id).maybeSingle();
+  if (!row) return bad('That person is not on the list.');
+  if (row.auth_user_id) return bad(row.name + ' already has a login. Use Reset password instead.');
+
+  let userId: string | null = null;
+  const { data: created, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
+  if (created?.user) userId = created.user.id;
+  else {
+    // Already registered: find it and set the password, rather than making a second account.
+    for (let page = 1; page <= 10 && !userId; page++) {
+      const { data: list } = await db.auth.admin.listUsers({ page, perPage: 200 });
+      const hit = (list?.users || []).find((u: any) => (u.email || '').toLowerCase() === email);
+      if (hit) userId = hit.id;
+      if (!list?.users?.length) break;
+    }
+    if (!userId) return bad(error?.message || 'Could not create the login.');
+    const { error: e3 } = await db.auth.admin.updateUserById(userId, { password });
+    if (e3) return bad(e3.message);
+  }
+
+  // Refuse if that login is already another person's.
+  const { data: taken } = await db.from('instructors').select('name').eq('auth_user_id', userId).maybeSingle();
+  if (taken) return bad('That email is already the login for ' + taken.name + '.');
+
+  const { error: e2 } = await db.from('instructors').update({ auth_user_id: userId }).eq('id', row.id);
+  if (e2) return bad(e2.message);
+  return NextResponse.json({ ok: true, email });
 }
 
 export async function PATCH(req: Request) {

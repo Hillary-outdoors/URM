@@ -353,6 +353,13 @@ function Account() {
       <div className={'msg ' + msg[0]}>{msg[1]}</div>
       <div className="rowflex"><button className="btn primary" onClick={change}>Change password</button>
         <button className="btn" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button></div>
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '14px 0' }} />
+      <h3>Put URMA on your home screen</h3>
+      <p className="muted" style={{ fontSize: 13.5 }}>
+        On an iPhone: tap the share button at the bottom of Safari, then <b>Add to Home Screen</b>.
+        On Android: tap the three dots in Chrome, then <b>Add to Home screen</b>. It then opens like an app
+        and you stay signed in.
+      </p>
     </div>
   );
 }

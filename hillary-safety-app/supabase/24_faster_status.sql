@@ -13,6 +13,8 @@ create index if not exists competencies_act on competencies (act_id);
 
 drop view if exists v_activity_ready;
 drop view if exists v_intention_ready;
+-- Built on the status view, so it has to go first and step 27 puts it back.
+drop view if exists v_log_review;
 drop view if exists v_competency_status;
 
 create view v_competency_status with (security_invoker = true) as
