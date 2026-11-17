@@ -8,7 +8,7 @@ import { fd, hm, downloadCsv } from '@/lib/util';
  * they owe and what is different about today — conditions, closures, tides. Printed and pinned up,
  * or downloaded as a spreadsheet.
  */
-export default function TakeSheet({ date, centre, centreName, onClose }: any) {
+export default function TakeSheet({ date, centre, centreName, coastal, alpine, onClose }: any) {
   const [rows, setRows] = useState<any[]>([]);
   const [day, setDay] = useState<any>(null);
   const [err, setErr] = useState('');
@@ -34,10 +34,10 @@ export default function TakeSheet({ date, centre, centreName, onClose }: any) {
       ['Day sheet', centreName, fd(date)],
       ['DM', day?.dm_name || '', 'Weather', day?.wx_state || '', day?.forecast || ''],
       ['Weather events', day?.weather_events || 'None'],
-      ['Avalanche', day?.avalanche || 'Nil'],
+      ...(alpine ? [['Avalanche', day?.avalanche || 'Nil']] : []),
       ['River levels', day?.river_levels || ''],
       ['Closures', day?.closures || 'None'],
-      ['Tides', day?.tide_notes || '', 'Sunset', day?.sunset ? hm(day.sunset) : ''],
+      ...(coastal ? [['Tides', day?.tide_notes || '', 'Sunset', day?.sunset ? hm(day.sunset) : '']] : []),
       [], head, ...rows.map((r) => cols.map((c) => (c === 'started_at' || c === 'due_by' ? (r[c] ? hm(r[c]) : '') : r[c] ?? ''))),
     ]);
   }
@@ -64,11 +64,11 @@ export default function TakeSheet({ date, centre, centreName, onClose }: any) {
         <div style={{ marginTop: 6 }}>
           {bit('Weather', [day?.wx_state, day?.forecast].filter(Boolean).join(' · '))}
           {bit('Watches and warnings', day?.weather_events)}
-          {bit('Avalanche', day?.avalanche)}
+          {alpine ? bit('Avalanche', day?.avalanche) : null}
           {bit('River levels', day?.river_levels)}
           {bit('Closures', day?.closures)}
-          {bit('Tides', day?.tide_notes)}
-          {bit('Sunset', day?.sunset ? hm(day.sunset) : null)}
+          {coastal ? bit('Tides', day?.tide_notes) : null}
+          {coastal ? bit('Sunset', day?.sunset ? hm(day.sunset) : null) : null}
           {bit('Weather notes', day?.wx_notes)}
           {bit('DM judgements', day?.dm_judgements)}
           {!day && <span className="muted" style={{ fontSize: 13 }}>No day sheet filled in yet.</span>}

@@ -23,7 +23,7 @@ const KINDS: { kind: string; title: string; placeLabel: string; placeHint: strin
     readings: ['Closed', 'Closed — slip', 'Closed — flooding', 'Closed — fire risk', 'Open with care'] },
 ];
 
-export default function DayConditions({ date, centre, dmName, onChange }: any) {
+export default function DayConditions({ date, centre, dmName, alpine, onChange }: any) {
   const [rows, setRows] = useState<any[]>([]);
   const [bands, setBands] = useState<any[]>([]);
   const [err, setErr] = useState('');
@@ -72,7 +72,7 @@ export default function DayConditions({ date, centre, dmName, onChange }: any) {
     <div style={{ marginTop: 10 }}>
       {err && <div className="msg bad">{err}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(290px,1fr))', gap: 14 }}>
-        {KINDS.map((k) => {
+        {KINDS.filter((k) => k.kind !== 'Avalanche' || alpine).map((k) => {
           const mine = rows.filter((x) => x.kind === k.kind);
           return (
             <div key={k.kind} className="card" style={{ margin: 0 }}>

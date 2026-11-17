@@ -71,6 +71,7 @@ export default function Today({ base, pulse }: any) {
       <select id={'d-' + k} value={day[k]} onChange={(e) => saveDay({ [k]: e.target.value })}>{opts.map((o) => <option key={o}>{o}</option>)}</select></div>
   );
 
+  const here = base.centres.find((x: any) => x.id === centre);   // what this centre's day sheet carries
   const logStart = async (i: any) => { await supabase.from('intentions').update({ started_at: nzNow() }).eq('id', i.id); load(); };
   const callIn = async (i: any, as: string) => { const { error } = await supabase.rpc('call_in_safe', { p_intention: i.id, p_as: as }); if (error) setErr(error.message); setCalling(0); load(); };
   async function addComms() {
@@ -88,8 +89,8 @@ export default function Today({ base, pulse }: any) {
 
   if (sheet) return (
     <div className="mpanel">
-      <TakeSheet date={today} centre={centre} centreName={base.centres.find((x: any) => x.id === centre)?.name || ''}
-        onClose={() => setSheet(false)} />
+      <TakeSheet date={today} centre={centre} centreName={here?.name || ''} coastal={!!here?.coastal}
+        alpine={!!here?.alpine} onClose={() => setSheet(false)} />
     </div>
   );
 
@@ -105,10 +106,12 @@ export default function Today({ base, pulse }: any) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '0 14px' }}>
           {text('dm_name', 'DM')}{pick('wx_state', 'Weather state', ['Green', 'Yellow', 'Red'])}
-          {text('forecast', 'Forecast')}{text('tide_notes', 'Tides')}{time('sunset', 'Sunset')}
+          {text('forecast', 'Forecast')}
+          {here?.coastal ? text('tide_notes', 'Tides') : null}
+          {here?.coastal ? time('sunset', 'Sunset') : null}
           {text('wx_notes', 'Weather notes and other', true)}{text('dm_judgements', 'DM judgements and discussions', true, true)}
         </div>
-        <DayConditions date={today} centre={centre} dmName={day.dm_name} />
+        <DayConditions date={today} centre={centre} dmName={day.dm_name} alpine={!!here?.alpine} />
       </div>
 
       <div className="mpanel" style={{ marginBottom: 14 }}>
