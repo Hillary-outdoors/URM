@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { nzToday, fd, STATUS } from '@/lib/util';
 import { Pill, StatusPill, Picker, Modal, TickGrid, TICKS, tickName } from '@/components/ui';
+import FolderPrint from './FolderPrint';
 
 const dmName = () => { try { return localStorage.getItem('dmName') || ''; } catch (e) { return ''; } };
 const logChange = (what: string, reason: string, by: string) => supabase.from('change_log').insert({ kind: 'Sign-off', what, reason, changed_by: 'Manager · ' + (by || 'unnamed') });
@@ -13,6 +14,7 @@ export default function Profile({ base }: any) {
   const [pid, setPid] = useState<string>(''); const [stat, setStat] = useState<any[]>([]); const [quals, setQuals] = useState<any[]>([]);
   const [cid, setCid] = useState<number>(0); const [lines, setLines] = useState<any[]>([]); const [ticks, setTicks] = useState<Record<string, any>>({}); const [ampSigned, setAmpSigned] = useState(false);
   const [form, setForm] = useState<any>(null); const [nq, setNq] = useState({ qualification: '', awarded_on: '', expires_on: '' }); const [err, setErr] = useState('');
+  const [printing, setPrinting] = useState(false);
   const p = people.find((x: any) => x.id === pid);
 
   const loadPerson = useCallback(async () => {
@@ -91,10 +93,13 @@ export default function Profile({ base }: any) {
   }
   const f = form, setF = (k: string, v: any) => setForm({ ...form, [k]: v });
 
+  if (printing && p) return <FolderPrint person={p} onClose={() => setPrinting(false)} />;
+
   return (
     <div className="mpanel">
       <div className="filters"><div style={{ minWidth: 300 }}><label className="f" style={{ marginTop: 0 }}>Instructor</label>
-        <Picker single options={people.map((x: any) => ({ id: x.id, label: x.name + (x.employment !== 'Staff' ? ' · ' + x.employment : '') }))} value={pid ? [pid] : []} onChange={(v) => setPid(v[0])} placeholder="Search for an instructor…" /></div></div>
+        <Picker single options={people.map((x: any) => ({ id: x.id, label: x.name + (x.employment !== 'Staff' ? ' · ' + x.employment : '') }))} value={pid ? [pid] : []} onChange={(v) => setPid(v[0])} placeholder="Search for an instructor…" /></div>
+        {p && <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setPrinting(true)}>Print folder</button>}</div>
       {!p ? <p className="muted">Search for an instructor to see their profile. Add new instructors under Edit › Instructors.</p> : (
         <>
           <div className="sum">
