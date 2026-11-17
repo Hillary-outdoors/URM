@@ -200,3 +200,17 @@ input[type=date],input[type=email],input[type=password]{width:100%;font:inherit;
 }
 button,.btn,.tk{-webkit-tap-highlight-color:transparent}
 .scroll{-webkit-overflow-scrolling:touch}
+
+/* ---- Printing ---------------------------------------------------------------
+   The take sheet gets pinned up in the office, so printing it has to produce a
+   clean page: no navigation, no buttons, nothing cut in half across a page. */
+.takesheet{max-width:900px}
+@media print{
+  .noprint,.appbar,.inav,.filters,.seg,nav{display:none !important}
+  body{background:#fff;color:#000}
+  .takesheet{max-width:none}
+  .takesheet .card{border:1px solid #bbb;box-shadow:none;break-inside:avoid;page-break-inside:avoid;background:#fff}
+  .takesheet h2{margin-top:0}
+  .mpanel{border:0;box-shadow:none;padding:0;background:#fff}
+  a[href]:after{content:""}
+}

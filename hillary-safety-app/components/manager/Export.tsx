@@ -6,7 +6,7 @@ import { INT_SELECT, shapeInt, nzToday, daysAgo, fd, hm, downloadCsv, intentionR
 const SETS: [string, string, string][] = [
   ['doc', 'DOC activity report', 'Groups and participants per activity inside the national park, for the dates chosen'],
   ['int', 'Intentions', 'Every intention in the dates chosen, with plan, call-in times, DM notes and outcome of the day'],
-  ['days', 'DM day sheets', 'Weather, river levels, closures and DM judgements for the dates chosen'],
+  ['days', 'DM day sheets', 'Weather, avalanche by band, every river level, closures, tides and DM judgements'],
   ['comms', 'DM comms log', 'Every timed entry in the dates chosen'],
   ['ticks', 'Competency sign-offs', 'One row per tick: who, which line, who signed it, when and why'],
   ['status', 'Competency status summary', 'Every current instructor against every competency'],
@@ -33,8 +33,9 @@ export default function Export({ base }: any) {
       return [['Activity', 'Days run', 'Groups', 'Participants', 'From', 'To']].concat(Object.keys(m).map((a) => [an(+a), m[+a].d.size, m[+a].g, m[+a].p, fd(from), fd(to)] as any[]));
     }
     if (k === 'days') {
-      const r = await fetchAll(() => supabase.from('dm_day_logs').select('*').gte('date', from).lte('date', to).order('date'));
-      return [['Date', 'Centre', 'DM', 'Weather state', 'Weather events', 'Avalanche', 'Closures', 'Weather notes', 'River levels', 'DM judgements and discussions']].concat(r.map((x) => [fd(x.date), cn(x.centre_id), x.dm_name, x.wx_state, x.wx_events, x.avalanche, x.closures, x.wx_notes, x.river_levels, x.dm_judgements]));
+      const r = await fetchAll(() => supabase.from('v_day_sheet').select('*').gte('date', from).lte('date', to).order('date'));
+      return [['Date', 'Centre', 'DM', 'Weather state', 'Forecast', 'Watches and warnings', 'Avalanche', 'River levels', 'Closures', 'Tides', 'Sunset', 'Weather notes', 'DM judgements and discussions']]
+        .concat(r.map((x: any) => [fd(x.date), x.centre, x.dm_name, x.wx_state, x.forecast, x.weather_events, x.avalanche, x.river_levels, x.closures, x.tide_notes, x.sunset, x.wx_notes, x.dm_judgements]));
     }
     if (k === 'comms') {
       const r = await fetchAll(() => supabase.from('comms_log').select('*').gte('date', from).lte('date', to).order('date').order('time'));

@@ -4,9 +4,12 @@ import { supabase } from '@/lib/supabase';
 import { SAFE, INT_SELECT, shapeInt, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
 import { Pill, Sheet } from '@/components/ui';
 import IntentionTable from './IntentionTable';
+import DayConditions from './DayConditions';
+import TakeSheet from './TakeSheet';
 import { IntentionSheet, AddIntention } from './IntentionSheet';
 
-const DAY0 = { dm_name: '', wx_state: 'Green', wx_events: 'None', avalanche: 'Nil', closures: '', wx_notes: '', river_levels: '', dm_judgements: '' };
+const DAY0 = { dm_name: '', wx_state: 'Green', wx_events: 'None', avalanche: 'Nil', closures: '', wx_notes: '',
+  river_levels: '', dm_judgements: '', forecast: '', tide_notes: '', sunset: '' };
 
 /** The duty manager's page: day sheet, open intentions with call-in buttons, and the comms log. */
 export default function Today({ base, pulse }: any) {
@@ -16,6 +19,7 @@ export default function Today({ base, pulse }: any) {
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} });
   const [sel, setSel] = useState<any>(null); const [adding, setAdding] = useState(false); const [calling, setCalling] = useState(0);
   const [c, setC] = useState({ time: '', who: '', entry: '' }); const [err, setErr] = useState('');
+  const [sheet, setSheet] = useState(false);
 
   useEffect(() => {
     let saved = 0; try { saved = +(localStorage.getItem('centre') || 0); } catch (e) { /* ignore */ }
@@ -57,6 +61,11 @@ export default function Today({ base, pulse }: any) {
         : <input id={'d-' + k} type="text" value={day[k]} onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value })} />}
     </div>
   );
+  const time = (k: string, label: string) => (
+    <div><label className="f" htmlFor={'d-' + k}>{label}</label>
+      <input id={'d-' + k} type="time" value={day[k] ? String(day[k]).slice(0, 5) : ''}
+        onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value || null })} /></div>
+  );
   const pick = (k: string, label: string, opts: string[]) => (
     <div><label className="f" htmlFor={'d-' + k}>{label}</label>
       <select id={'d-' + k} value={day[k]} onChange={(e) => saveDay({ [k]: e.target.value })}>{opts.map((o) => <option key={o}>{o}</option>)}</select></div>
@@ -77,6 +86,13 @@ export default function Today({ base, pulse }: any) {
   const line = (i: any) => <div key={i.id}><b>{i.who.map(nm).join(' + ')}</b> · {i.acts.map(an).join(' + ')} · due {hm(i.due_by)} · {lateMinutes(i, base.activities)} min overdue</div>;
   const onBoard = [...new Set(ints.flatMap((i) => i.who))] as string[];
 
+  if (sheet) return (
+    <div className="mpanel">
+      <TakeSheet date={today} centre={centre} centreName={base.centres.find((x: any) => x.id === centre)?.name || ''}
+        onClose={() => setSheet(false)} />
+    </div>
+  );
+
   return (
     <>
       {err && <div className="inc">{err}</div>}
@@ -84,13 +100,15 @@ export default function Today({ base, pulse }: any) {
         <div className="filters" style={{ marginBottom: 6 }}>
           <h3 style={{ fontSize: 16, alignSelf: 'center' }}>Day sheet · {fd(today)}</h3>
           <div><div className="seg">{base.centres.map((x: any) => <button key={x.id} className={centre === x.id ? 'on' : ''} onClick={() => { setCentre(x.id); try { localStorage.setItem('centre', String(x.id)); } catch (e) { /* ignore */ } }}>{x.name}</button>)}</div></div>
+          <button className="btn" onClick={() => setSheet(true)}>Take sheet</button>
           <div className="muted" style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 13 }}>Saves as you go</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '0 14px' }}>
-          {text('dm_name', 'DM')}{pick('wx_state', 'Weather state', ['Green', 'Yellow', 'Red'])}{pick('wx_events', 'Weather events', ['None', 'Watch', 'Warning'])}
-          {pick('avalanche', 'Avalanche', ['Nil', 'Green', 'Yellow', 'Orange', 'Red', 'Black'])}{text('river_levels', 'River levels')}{text('closures', 'Closures')}
+          {text('dm_name', 'DM')}{pick('wx_state', 'Weather state', ['Green', 'Yellow', 'Red'])}
+          {text('forecast', 'Forecast')}{text('tide_notes', 'Tides')}{time('sunset', 'Sunset')}
           {text('wx_notes', 'Weather notes and other', true)}{text('dm_judgements', 'DM judgements and discussions', true, true)}
         </div>
+        <DayConditions date={today} centre={centre} dmName={day.dm_name} />
       </div>
 
       <div className="mpanel" style={{ marginBottom: 14 }}>
