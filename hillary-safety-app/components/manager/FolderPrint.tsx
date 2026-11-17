@@ -19,7 +19,8 @@ export default function FolderPrint({ person, onClose }: any) {
     setState({ loading: true });
     try {
       const [st, q, ls, so] = await Promise.all([
-        supabase.from('v_competency_status').select('*').eq('instructor_id', person.id).order('level').order('name'),
+        supabase.from('v_competency_status').select('*, competencies!inner(version,scope,prerequisites,rrcc_text,assessment_notes)')
+          .eq('instructor_id', person.id).order('level').order('name'),
         supabase.from('qualifications_held').select('*').eq('instructor_id', person.id).order('qualification'),
         fetchAll(() => supabase.from('competency_lines').select('*').order('comp_id').order('sort_order').order('id')),
         fetchAll(() => supabase.from('comp_signoffs').select('line_id,tick_type,initials,signed_by,observed_on,site,source').eq('instructor_id', person.id)),
@@ -29,7 +30,9 @@ export default function FolderPrint({ person, onClose }: any) {
       (so || []).forEach((s: any) => ticks.set(s.line_id + '|' + s.tick_type, s));
       const byComp = new Map<number, any[]>();
       (ls || []).forEach((l: any) => byComp.set(l.comp_id, [...(byComp.get(l.comp_id) || []), l]));
-      setState({ loading: false, stat: st.data || [], quals: q.data || [], lines: byComp, ticks });
+      // flatten the form's own wording up alongside the status
+      const stat = (st.data || []).map((r: any) => ({ ...r, ...(r.competencies || {}) }));
+      setState({ loading: false, stat, quals: q.data || [], lines: byComp, ticks });
     } catch (e: any) { setErr(e.message || 'Could not build the folder.'); setState({ loading: false }); }
   }, [person.id]);
   useEffect(() => { load(); }, [load]);
@@ -81,33 +84,54 @@ export default function FolderPrint({ person, onClose }: any) {
         const used = TICKS.filter((t) => lines.some((l: any) => l['needs_' + t]));
         let section = '';
         return (
-          <div key={s.comp_id} style={{ marginTop: 16, pageBreakBefore: 'always', breakBefore: 'page' }}>
-            <h3 style={{ marginBottom: 2 }}>{s.name} · Level {s.level}</h3>
-            <div className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>
+          <div key={s.comp_id} className="formpage">
+            {/* the head of the paper form: title, version, and the Completed/RRCC box */}
+            <div className="formhead">
+              <div>
+                <h3 style={{ margin: 0, fontSize: 19 }}>{s.name} <span style={{ fontWeight: 400 }}>(L{s.level})</span></h3>
+                {s.version && <div className="muted" style={{ fontSize: 12.5, fontStyle: 'italic' }}>{s.version}</div>}
+              </div>
+              <table className="rrccbox"><tbody><tr>
+                <td>Completed/RRCC</td>
+                <td style={{ width: 54, textAlign: 'center' }}>{s.status === 'Competent' ? 'R' : ''}</td>
+              </tr></tbody></table>
+            </div>
+
+            {(s.scope || s.prerequisites || s.rrcc_text || s.assessment_notes) && (
+              <div className="formboxes">
+                {s.scope && <div><b>Scope</b><div>{s.scope}</div></div>}
+                {s.prerequisites && <div><b>Prerequisites</b><div>{s.prerequisites}</div></div>}
+                {s.rrcc_text && <div><b>Recorded Recognition of Current Competence</b><div>{s.rrcc_text}</div></div>}
+                {s.assessment_notes && <div><b>Assessment</b><div>{s.assessment_notes}</div></div>}
+              </div>
+            )}
+
+            <div className="muted" style={{ fontSize: 12, margin: '6px 0 4px' }}>
               {s.status} · {s.done} of {s.total} boxes{s.code ? ' · ' + s.code : ''}
             </div>
-            <table className="m" style={{ fontSize: 11.5 }}>
+
+            <table className="m formtable">
               <thead><tr>
-                <th style={{ width: '42%' }}>What has to be shown</th>
-                {used.map((t) => <th key={t} style={{ textAlign: 'center' }}>{tickName(t, s.box_labels)}</th>)}
+                <th>&nbsp;</th>
+                {used.map((t) => <th key={t} className="boxcol">{tickName(t, s.box_labels)}</th>)}
               </tr></thead>
               <tbody>
                 {lines.map((l: any) => {
                   const head = l.section && l.section !== section ? (section = l.section) : null;
                   return (
                     <Fragment key={l.id}>
-                      {head && <tr><td colSpan={used.length + 1} style={{ background: 'var(--line)', fontWeight: 600 }}>{head}</td></tr>}
+                      {head && <tr className="sectionrow"><td colSpan={used.length + 1}>{head}</td></tr>}
                       <tr>
                         <td>{l.element ? <b>{l.element}: </b> : null}{l.content}</td>
                         {used.map((t) => {
-                          if (!l['needs_' + t]) return <td key={t} style={{ background: 'var(--line)' }} />;
+                          if (!l['needs_' + t]) return <td key={t} className="notonform" />;
                           const hit = state.ticks.get(l.id + '|' + t);
                           return (
-                            <td key={t} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td key={t} className="boxcol">
                               {hit ? <>
                                 <b>{hit.initials || '✓'}</b>
-                                {hit.observed_on ? <><br /><span style={{ fontSize: 10 }}>{fd(hit.observed_on)}</span></> : null}
-                                {hit.site ? <><br /><span style={{ fontSize: 10 }}>{hit.site}</span></> : null}
+                                {hit.observed_on ? <><br /><span className="tiny">{fd(hit.observed_on)}</span></> : null}
+                                {hit.site ? <><br /><span className="tiny">{hit.site}</span></> : null}
                               </> : ''}
                             </td>
                           );

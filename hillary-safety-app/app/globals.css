@@ -214,3 +214,23 @@ button,.btn,.tk{-webkit-tap-highlight-color:transparent}
   .mpanel{border:0;box-shadow:none;padding:0;background:#fff}
   a[href]:after{content:""}
 }
+
+/* ---- The printed competency folder, laid out like the paper form ---------- */
+.formpage{margin-top:18px;page-break-before:always;break-before:page}
+.formpage:first-of-type{page-break-before:auto;break-before:auto}
+.formhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:8px}
+.rrccbox{border-collapse:collapse;font-size:11.5px}
+.rrccbox td{border:1px solid #666;padding:6px 8px;height:34px;vertical-align:top;font-weight:600}
+.formboxes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.formboxes>div{border:1px solid var(--line);background:var(--panel2,#f3f4f6);padding:6px 8px;font-size:11.5px;white-space:pre-wrap}
+.formboxes>div>b{display:block;margin-bottom:3px;font-size:11.5px}
+.formtable{font-size:11.5px}
+.formtable th.boxcol,.formtable td.boxcol{width:58px;text-align:center;white-space:nowrap}
+.formtable td.notonform{background:var(--line)}
+.formtable tr.sectionrow td{background:var(--line);font-weight:600}
+.tiny{font-size:9.5px}
+@media print{
+  .formboxes>div{background:#f2f2f2;border-color:#999}
+  .formtable td.notonform,.formtable tr.sectionrow td{background:#e7e7e7}
+  .rrccbox td{border-color:#000}
+}
