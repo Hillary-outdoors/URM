@@ -15,6 +15,9 @@ export default function Profile({ base }: any) {
   const [cid, setCid] = useState<number>(0); const [lines, setLines] = useState<any[]>([]); const [ticks, setTicks] = useState<Record<string, any>>({}); const [ampSigned, setAmpSigned] = useState(false);
   const [form, setForm] = useState<any>(null); const [nq, setNq] = useState({ qualification: '', awarded_on: '', expires_on: '' }); const [err, setErr] = useState('');
   const [printing, setPrinting] = useState(false);
+  // The one-off job of copying the paper folders in. While it is on, a click ticks straight away
+  // using the initials and date set at the top, with no form in between.
+  const [fc, setFc] = useState<any>({ on: false, ini: '', date: '', busy: false });
   const p = people.find((x: any) => x.id === pid);
 
   const loadPerson = useCallback(async () => {
@@ -53,7 +56,47 @@ export default function Profile({ base }: any) {
   const staff = base.instructors.filter((x: any) => x.employment !== 'Past staff');
   const signer = (name: string) => staff.find((x: any) => x.name === name);
   const iniOf = (name: string) => (signer(name)?.initials || autoIni(name) || '').toUpperCase().slice(0, 3);
+  /** Copy a box straight off the paper: no form, no reason, marked as coming from the folder. */
+  async function folderTick(l: any, type: string, on: boolean) {
+    setErr('');
+    const key = l.id + '|' + type;
+    if (on) {
+      const row = ticks[key];
+      setTicks((t: any) => { const n = { ...t }; delete n[key]; return n; });     // show it at once
+      const { error } = await supabase.from('comp_signoffs').delete()
+        .eq('instructor_id', pid).eq('line_id', l.id).eq('tick_type', type);
+      if (error) { setTicks((t: any) => ({ ...t, [key]: row })); setErr(error.message); return; }
+    } else {
+      const row = {
+        instructor_id: pid, line_id: l.id, tick_type: type, source: 'folder',
+        signed_by: 'From the paper folder', initials: (fc.ini || '').toUpperCase().slice(0, 3) || null,
+        observed_on: fc.date || null,
+      };
+      setTicks((t: any) => ({ ...t, [key]: row }));
+      const { error } = await supabase.from('comp_signoffs').upsert(row, { onConflict: 'instructor_id,line_id,tick_type' });
+      if (error) { setTicks((t: any) => { const n = { ...t }; delete n[key]; return n; }); setErr(error.message); return; }
+    }
+    loadPerson();                                   // the status pill follows along
+  }
+
+  /** Fill a whole column down the page - the usual shape of a folder, one assessor on one visit. */
+  async function fillColumn(type: string) {
+    setErr(''); setFc({ ...fc, busy: true });
+    const rows = lines.filter((l: any) => !l.auto_from_amp && l['needs_' + type] && !ticks[l.id + '|' + type])
+      .map((l: any) => ({
+        instructor_id: pid, line_id: l.id, tick_type: type, source: 'folder',
+        signed_by: 'From the paper folder', initials: (fc.ini || '').toUpperCase().slice(0, 3) || null,
+        observed_on: fc.date || null,
+      }));
+    if (rows.length) {
+      const { error } = await supabase.from('comp_signoffs').upsert(rows, { onConflict: 'instructor_id,line_id,tick_type' });
+      if (error) { setFc({ ...fc, busy: false }); return setErr(error.message); }
+    }
+    setFc({ ...fc, busy: false }); loadComp(); loadPerson();
+  }
+
   function clickTick(l: any, type: string, on: boolean) {
+    if (fc.on) return folderTick(l, type, on);
     setErr('');
     if (on) setForm({ mode: 'remove', l, type, tick: ticks[l.id + '|' + type], reason: '', by: dmName() });
     else setForm({ mode: 'add', l, type, by: dmName(), ini: iniOf(dmName()), date: nzToday(), site: '', based: 'Observed in person', note: '', all: false });
@@ -99,7 +142,30 @@ export default function Profile({ base }: any) {
     <div className="mpanel">
       <div className="filters"><div style={{ minWidth: 300 }}><label className="f" style={{ marginTop: 0 }}>Instructor</label>
         <Picker single options={people.map((x: any) => ({ id: x.id, label: x.name + (x.employment !== 'Staff' ? ' · ' + x.employment : '') }))} value={pid ? [pid] : []} onChange={(v) => setPid(v[0])} placeholder="Search for an instructor…" /></div>
-        {p && <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setPrinting(true)}>Print folder</button>}</div>
+        {p && <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setPrinting(true)}>Print folder</button>}
+        {p && <button className={'btn' + (fc.on ? ' primary' : '')} style={{ alignSelf: 'center' }}
+          onClick={() => setFc({ ...fc, on: !fc.on })}>{fc.on ? 'Folder check: on' : 'Folder check'}</button>}</div>
+      {p && fc.on && (
+        <div className="hl" style={{ marginTop: 0 }}>
+          <b>Copying the paper folder in.</b> Clicking a box ticks it straight away — no form, no reason.
+          Click it again to take it off. Set the initials and date from the page you are reading and they
+          go on every box until you change them; leave them blank if the folder does not say.
+          <div className="rowflex" style={{ gap: 8, marginTop: 8, alignItems: 'flex-end' }}>
+            <div style={{ width: 110 }}><label className="f" style={{ marginTop: 0 }} htmlFor="fci">Initials</label>
+              <input id="fci" type="text" maxLength={3} value={fc.ini}
+                onChange={(e) => setFc({ ...fc, ini: e.target.value.toUpperCase() })} placeholder="GS" /></div>
+            <div style={{ width: 170 }}><label className="f" style={{ marginTop: 0 }} htmlFor="fcd">Date on the page</label>
+              <input id="fcd" type="date" value={fc.date} onChange={(e) => setFc({ ...fc, date: e.target.value })} /></div>
+            {comp && <div className="rowflex" style={{ gap: 6 }}>
+              {TICKS.filter((t) => lines.some((l: any) => l['needs_' + t] && !l.auto_from_amp)).map((t) => (
+                <button key={t} className="btn small" disabled={fc.busy} onClick={() => fillColumn(t)}>
+                  Fill {tickName(t, comp.box_labels)}
+                </button>
+              ))}
+            </div>}
+          </div>
+        </div>
+      )}
       {!p ? <p className="muted">Search for an instructor to see their profile. Add new instructors under Edit › Instructors.</p> : (
         <>
           <div className="sum">
@@ -128,7 +194,10 @@ export default function Profile({ base }: any) {
             {comp && <div className="rowflex" style={{ alignSelf: 'center' }}><StatusPill status={comp.status} /><Pill>{comp.done} of {comp.total} ticks</Pill>
               {comp.status !== 'Competent' && <button className="btn small" onClick={() => { setErr(''); setForm({ mode: 'override', by: dmName(), reason: '' }); }}>Sign off whole competency</button>}</div>}
           </div>
-          {comp && <><p className="muted" style={{ margin: '0 0 6px', maxWidth: '70ch' }}>Click an empty box to sign it off. Click a ticked box to remove it. Both ask for a reason and go in the change log.</p>
+          {comp && <><p className="muted" style={{ margin: '0 0 6px', maxWidth: '70ch' }}>
+            {fc.on
+              ? 'Folder check is on: a click ticks or unticks the box straight away and records it as copied from the paper folder.'
+              : 'Click an empty box to sign it off. Click a ticked box to remove it. Both ask for a reason and go in the change log.'}</p>
             <div style={{ maxWidth: 760 }}>{lines.length ? <TickGrid labels={comp.box_labels} lines={lines} has={(l, t) => (l.auto_from_amp ? ampSigned : !!ticks[l.id + '|' + t])} canClick={(l) => !l.auto_from_amp} onClick={clickTick}
               ini={(l, t) => ticks[l.id + '|' + t]?.initials || ''}
               hint={(l, t) => { const s = ticks[l.id + '|' + t]; return s ? `${s.initials ? s.initials + ' · ' : ''}${s.signed_by || 'Self'}${s.observed_on ? ' · ' + fd(s.observed_on) : ''}${s.site ? ' · ' + s.site : ''}${s.reason ? '\n' + s.reason : ''}` : 'Click to sign off'; }} /> : <span className="muted">No lines yet. Add them under Edit › Competencies.</span>}</div></>}
