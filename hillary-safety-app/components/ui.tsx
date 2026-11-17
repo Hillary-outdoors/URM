@@ -11,7 +11,9 @@ export function Picker({ options, value, onChange, placeholder, single }: {
   options: { id: any; label: string }[]; value: any[]; onChange: (v: any[]) => void; placeholder: string; single?: boolean;
 }) {
   const [q, setQ] = useState(''); const [open, setOpen] = useState(false);
-  const matches = options.filter((o) => !value.includes(o.id) && (!q || o.label.toLowerCase().includes(q.toLowerCase()))).slice(0, 8);
+  // show a good scrollable run of the list, not just the first few
+  const hits = options.filter((o) => !value.includes(o.id) && (!q || o.label.toLowerCase().includes(q.toLowerCase())));
+  const matches = hits.slice(0, 60);
   const label = (id: any) => options.find((o) => o.id === id)?.label || '?';
   return (
     <div className="picker">
@@ -28,6 +30,7 @@ export function Picker({ options, value, onChange, placeholder, single }: {
         {matches.length ? matches.map((o) => (
           <button type="button" key={o.id} onMouseDown={(e) => { e.preventDefault(); onChange(single ? [o.id] : [...value, o.id]); setQ(''); setOpen(false); }}>{o.label}</button>
         )) : <div style={{ padding: '8px 10px' }} className="muted">No match</div>}
+        {hits.length > matches.length && <div style={{ padding: '6px 10px' }} className="muted">…and {hits.length - matches.length} more — type to narrow it down</div>}
       </div>
     </div>
   );
