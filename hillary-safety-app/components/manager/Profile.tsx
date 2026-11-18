@@ -145,6 +145,9 @@ export default function Profile({ base }: any) {
         {p && <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setPrinting(true)}>Print folder</button>}
         {p && <button className={'btn' + (fc.on ? ' primary' : '')} style={{ alignSelf: 'center' }}
           onClick={() => setFc({ ...fc, on: !fc.on })}>{fc.on ? 'Folder check: on' : 'Folder check'}</button>}</div>
+      {err && !form && <div className="msg bad" style={{ marginTop: 8 }}>
+        {err}<button className="linkish" style={{ float: 'right' }} onClick={() => setErr('')}>dismiss</button>
+      </div>}
       {p && fc.on && (
         <div className="hl" style={{ marginTop: 0 }}>
           <b>Copying the paper folder in.</b> Clicking a box ticks it straight away — no form, no reason.
