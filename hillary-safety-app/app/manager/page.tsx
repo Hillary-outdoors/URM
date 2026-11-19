@@ -1,196 +1,448 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, getMe } from '@/lib/supabase';
-import { Logo } from '@/components/Logo';
-import { INT_SELECT, shapeInt, lateMinutes, lateLevel, beep, nzToday, hm } from '@/lib/util';
-import Today from '@/components/manager/Today';
-import History from '@/components/manager/History';
-import MatrixTab from '@/components/manager/MatrixTab';
-import Profile from '@/components/manager/Profile';
-import ChangeLog from '@/components/manager/ChangeLog';
-import Amps from '@/components/manager/Amps';
-import Competencies from '@/components/manager/Competencies';
-import People from '@/components/manager/People';
-import Export from '@/components/manager/Export';
-import TrainingLogs from '@/components/manager/TrainingLogs';
+import { PLAN_QUICK, AIM_QUICK, INT_SELECT, shapeInt, needsCall, nzToday, fd, hm, downloadCsv, intentionRows, STATUS } from '@/lib/util';
+import { Pill, StatusPill, Picker, Quick, TickGrid } from '@/components/ui';
+import TrainingLogForm from '@/components/TrainingLogForm';
+import { Mark } from '@/components/Logo';
+import DayBoard from '@/components/DayBoard';
+import AmpMedia from '@/components/AmpMedia';
+import LogDetail from '@/components/LogDetail';
 
-const TABS: [string, string, string?][] = [
-  ['today', "Today's intentions"], ['history', 'Intention history'], ['matrix', 'Who can run what'], ['profile', 'Instructor profile'], ['logs', 'Training log'], ['log', 'Change log'],
-  ['amps', 'AMPs', 'Edit'], ['comps', 'Competencies'], ['people', 'Instructors'], ['export', 'Export', 'Audit'],
+const AMP_FIELDS: [string, string][] = [
+  ['activity_description', 'Activity description'], ['location', 'Location'], ['emergency_response', 'Emergency response'],
+  ['instructor_requirements', 'Instructor requirements'], ['client_competencies', 'Client competencies'],
+  ['specific_equipment', 'Specific equipment'], ['specific_policies', 'Specific policies'], ['access_permission', 'Access permission'],
+  ['camping', 'Camping'], ['toilets', 'Toilets'], ['water', 'Water'], ['key_hazards', 'Key hazards'], ['other_resources', 'Other resources and notes'],
 ];
 
-/** The manager side. Loads the shared lists once, then shows one tab at a time. */
-export default function ManagerApp() {
+/** The instructor side: a phone-first app with five tabs. */
+export default function InstructorApp() {
   const router = useRouter();
-  const [ready, setReady] = useState(false); const [err, setErr] = useState('');
-  const [tab, setTab] = useState('today');
-  const [base, setBase] = useState<any>({ centres: [], instructors: [], activities: [], amps: [], comps: [] });
-  const [pulse, setPulse] = useState(0);          // goes up every 30 seconds so the board refreshes
-  const [alerts, setAlerts] = useState(false);    // has the manager switched alert sound on?
-  const alerted = useRef<Record<number, number>>({});
-  /**
-   * The state of the overdue watch itself. `ok` is when it last got a real answer, and it is on
-   * screen on purpose: a clock that has gone stale is something a DM can see, where a watch that
-   * has quietly stopped is not. `dead` means the session is gone and nothing is being checked.
-   */
-  const [watch, setWatch] = useState<{ ok: Date | null; fails: number; dead: boolean; msg: string }>(
-    { ok: null, fails: 0, dead: false, msg: '' });
+  const [me, setMe] = useState<any>(null);
+  const [tab, setTab] = useState('home');
+  const [d, setD] = useState<any>({ activities: [], instructors: [], amps: [], comps: [], ints: [], centres: [] });
+  const [err, setErr] = useState('');
 
-  const loadBase = useCallback(async () => {
-    const [c, i, a, m, k] = await Promise.all([
+  const load = useCallback(async (m: any) => {
+    const [act, ins, amp, comp, ints, cen, all] = await Promise.all([
+      supabase.from('activities').select('*').eq('active', true).order('name'),
+      supabase.from('instructors').select('id,name,initials,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
+      supabase.from('v_amp_status').select('*').eq('instructor_id', m.id).gt('version', 0).order('title'),
+      supabase.from('v_competency_status').select('*').eq('instructor_id', m.id).order('level').order('name'),
+      supabase.from('intentions').select(INT_SELECT).order('date', { ascending: false }).limit(500),
       supabase.from('centres').select('*').order('id'),
-      supabase.from('instructors').select('*').order('name'),
-      supabase.from('activities').select('*').order('name'),
-      supabase.from('amps').select('id,act_id,title,version').order('title'),
-      supabase.from('competencies').select('id,name,level,act_id,centre_id').order('level').order('name'),
+      supabase.from('competencies').select('id,name,level,centre_id').order('level').order('name'),
     ]);
-    const bad = [c, i, a, m, k].find((r) => r.error); if (bad) setErr(bad.error!.message);
-    setBase({ centres: c.data || [], instructors: i.data || [], activities: a.data || [], amps: m.data || [], comps: k.data || [] });
+    const bad = [act, ins, amp, comp, ints, cen, all].find((r) => r.error);
+    if (bad) setErr(bad.error!.message);
+    setD({
+      activities: act.data || [], instructors: ins.data || [], amps: amp.data || [],
+      meId: m.id,
+      comps: (comp.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
+      ints: (ints.data || []).map(shapeInt),
+      centres: cen.data || [],
+      allComps: (all.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
+    });
   }, []);
 
   useEffect(() => {
-    getMe().then(async (r) => {
+    getMe().then((r) => {
       if (!r) return router.replace('/login');
-      if (r.me?.account_type !== 'manager') return router.replace('/instructor');
-      await loadBase();
-      setBase((b: any) => ({ ...b, me: r.me }));   // who is signed in, for anything that records an author
-      setReady(true);
+      if (!r.me) { setErr('Your login is not linked to an instructor record yet. Ask a manager.'); return; }
+      if (r.me.account_type === 'manager') return router.replace('/manager');
+      setMe(r.me); load(r.me);
     });
-  }, [router, loadBase]);
+  }, [router, load]);
 
-  /**
-   * Overdue watch: runs on every manager tab, every 30 seconds.
-   *
-   * It used to throw the error away and read a failed request as "nobody is overdue", so when a
-   * login expired overnight the watch went silent and the screen looked completely normal. Now a
-   * failure is noticed, a dead session stops the watch and says so on screen, and repeated failures
-   * back off instead of hammering the server thousands of times.
-   */
-  useEffect(() => {
-    if (!ready) return;
-    let stopped = false;
-    let timer: any = null;
-    let fails = 0;
+  if (!me) return <div className="login"><p className="muted">{err || 'Loading…'}</p>{err && <button className="btn" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button>}</div>;
+  const reload = () => load(me);
+  const open = d.ints.filter((i: any) => i.status !== 'Closed');
+  const todoAmps = d.amps.filter((a: any) => !a.up_to_date);
 
-    // 30 seconds normally; after a failure 1, 2, 4, 8 minutes, capped there.
-    const delay = () => (fails === 0 ? 30000 : Math.min(60000 * Math.pow(2, Math.min(fails - 1, 3)), 480000));
-    const schedule = () => { if (!stopped) timer = setTimeout(run, delay()); };
-
-    async function run() {
-      if (stopped) return;
-      // No point asking while the laptop is off the network.
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) { schedule(); return; }
-
-      const { data, error } = await supabase.from('intentions').select(INT_SELECT)
-        .neq('status', 'Closed').not('due_by', 'is', null).lte('date', nzToday());
-
-      if (error) {
-        fails += 1;
-        // A session that will not refresh is not a hiccup. Nothing is being watched until
-        // somebody signs in again, and that has to be said out loud.
-        const { data: s } = await supabase.auth.getSession();
-        const dead = !s?.session;
-        setWatch((w) => ({ ...w, fails, dead, msg: dead ? 'Your login has expired.' : error.message }));
-        if (dead) { stopped = true; return; }
-        schedule();
-        return;
-      }
-
-      fails = 0;
-      setWatch({ ok: new Date(), fails: 0, dead: false, msg: '' });
-
-      let worst = 0;
-      (data || []).map(shapeInt).forEach((i: any) => {
-        const lv = lateLevel(lateMinutes(i, base.activities));
-        if (lv > (alerted.current[i.id] || 0)) {
-          worst = Math.max(worst, lv);
-          const who = i.who.map((w: string) => base.instructors.find((x: any) => x.id === w)?.name).filter(Boolean).join(' + ');
-          try {
-            if ('Notification' in window && Notification.permission === 'granted')
-              new Notification((lv === 2 ? 'RED: ' : 'Yellow: ') + who + ' not called in', { body: 'Due ' + hm(i.due_by) + '. Open the Safety System.', requireInteraction: lv === 2 });
-          } catch (e) { /* notifications not available */ }
-        }
-        alerted.current[i.id] = lv;
-      });
-      if (worst && alerts) beep(worst === 2 ? 6 : 3);
-      setPulse((p) => p + 1);
-      schedule();
-    }
-
-    // Back on the network, or back to this tab: check straight away rather than waiting out a backoff.
-    const wake = () => { if (!stopped) { clearTimeout(timer); fails = 0; run(); } };
-    const onVisible = () => { if (!document.hidden) wake(); };
-    window.addEventListener('online', wake);
-    document.addEventListener('visibilitychange', onVisible);
-
-    run();
-    return () => {
-      stopped = true; clearTimeout(timer);
-      window.removeEventListener('online', wake);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [ready, alerts, base.activities, base.instructors]);
-
-  async function enableAlerts() {
-    beep(1); setAlerts(true);
-    try { if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission(); } catch (e) { /* ignore */ }
-  }
-
-  if (!ready) return <div className="login muted">Loading…</div>;
-  const p = { base, reload: loadBase, pulse };
   return (
     <>
       <div className="appbar">
-        <Logo size={30} /><small>Hillary Outdoors · Manager</small>
-        <div className="sp">
-          {/* Deliberately always visible. A stale time is a problem you can see. */}
-          <small className="muted" title="When the overdue watch last got an answer from the server">
-            {watch.dead ? 'Overdue watch: STOPPED'
-              : watch.ok ? 'Checked ' + watch.ok.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit', hour12: false })
-              : 'Checking…'}
-          </small>
-          <button className={'btn small' + (alerts ? ' alert-on' : '')} onClick={alerts ? () => setAlerts(false) : enableAlerts}>{alerts ? 'Overdue alerts: On' : 'Turn on overdue alerts'}</button>
-          <button className="btn small" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button>
-        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Mark size={26} /><div><small>Instructor</small><h1>{me.name}</h1></div></div>
+        <div className="sp"><button className="btn small" onClick={() => setTab('account')}>Account</button></div>
       </div>
-      <div className="wrap">
-        {watch.dead && (
-          <div className="inc">
-            <b>Nobody is watching the clock.</b> {watch.msg} Until you sign in again, the overdue
-            alarm is not running and nothing on this screen is being refreshed.
-            <div style={{ marginTop: 8 }}>
-              <button className="btn primary" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign in again</button>
+      <div className="narrow">
+        {err && <div className="inc">{err}</div>}
+        {tab === 'home' && <Home d={d} open={open} todoAmps={todoAmps} go={setTab} />}
+        {tab === 'intent' && <Intent me={me} d={d} open={open} reload={reload} />}
+        {tab === 'day' && <DayBoard me={me} centres={d.centres} />}
+        {tab === 'progress' && <Progress me={me} d={d} reload={reload} />}
+        {tab === 'tlog' && <TrainingLog me={me} d={d} reload={reload} />}
+        {tab === 'amps' && <Amps d={d} reload={reload} />}
+        {tab === 'logbook' && <Logbook me={me} d={d} />}
+        {tab === 'account' && <Account />}
+      </div>
+      <nav className="inav">
+        {[['home', 'Home'], ['intent', 'Intention'], ['day', 'Day'], ['progress', 'Competencies'], ['tlog', 'Training log'], ['amps', 'AMPs'], ['logbook', 'Logbook']].map(([k, l]) => (
+          <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </nav>
+    </>
+  );
+}
+
+const names = (ids: any[], list: any[]) => ids.map((id) => list.find((x) => x.id === id)?.name || '?');
+
+function IntLine({ i, d }: any) {
+  const call = needsCall(i, d.activities);
+  return (
+    <>
+      <b>{names(i.acts, d.activities).join(' + ')}</b>
+      <div>{fd(i.date)}{i.pax ? ` · ${i.pax} pax` : ''}{i.who.length > 1 ? ' · with ' + names(i.who.filter((w: string) => w !== d.meId), d.instructors).join(', ') : ''}</div>
+      {call && <small className="muted">{i.started_at ? 'Started ' + hm(i.started_at) : 'Not started yet'}{i.due_by ? ' · due ' + hm(i.due_by) : ''}</small>}
+    </>
+  );
+}
+
+/**
+ * The home screen is what you are doing today, and little else. The AMP list used to sit here a
+ * row at a time and ran off the bottom of the phone, so it is one line now and the AMPs tab has
+ * the detail.
+ */
+function Home({ d, open, todoAmps, go }: any) {
+  const l1 = d.comps.filter((c: any) => c.level === 1), done = l1.filter((c: any) => c.status === 'Competent').length;
+  const next = d.comps.filter((c: any) => c.status !== 'Competent').slice(0, 3);
+  return (
+    <>
+      <div className="card">
+        <h3>Today</h3>
+        {open.length ? open.map((i: any) => (
+          <div key={i.id} style={{ marginBottom: 10 }}>
+            <div className="check">
+              <span className={'dot ' + (i.status === 'Approved' ? 'ok' : 'wait')}>{i.status === 'Approved' ? '✓' : '…'}</span>
+              <span style={{ flex: 1 }}>
+                <IntLine i={i} d={d} />
+                {i.outcome_of_day && <div style={{ fontSize: 13.5 }}>{i.outcome_of_day}</div>}
+                {i.plan && <div><small className="muted">Plan: {i.plan}</small></div>}
+                {i.weather_note && <div><small className="muted">Weather: {i.weather_note}</small></div>}
+                <div><small className="muted">
+                  {i.status === 'Approved' ? 'Approved by the DM' : 'Sent. Waiting for the DM'}
+                  {i.dm_notes ? ' · DM note: ' + i.dm_notes : ''}
+                </small></div>
+              </span>
             </div>
           </div>
-        )}
-        {!watch.dead && watch.fails > 0 && (
-          <div className="hl">
-            <b>Cannot reach the server.</b> The overdue watch has failed {watch.fails} time{watch.fails === 1 ? '' : 's'} in a row
-            and is still retrying{watch.msg ? ' — ' + watch.msg : ''}. Check this laptop is online.
-          </div>
-        )}
-        {err && <div className="inc">{err}</div>}
-        {!alerts && <div className="hl">Overdue alerts are off on this device. Turn them on (top right) so it dings and shows a notification when someone has not called in. Keep this page open on the duty laptop or phone.</div>}
-        <div className="mtabs">
-          {TABS.map(([k, l, group]) => (
-            <span key={k} style={{ display: 'contents' }}>
-              {group && <span className="mdiv">{group}</span>}
-              <button className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
-            </span>
-          ))}
+        )) : <>
+          <p className="muted" style={{ margin: '0 0 8px' }}>Nothing out at the moment.</p>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => go('intent')}>Submit an intention</button>
+        </>}
+        {!!open.length && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+          The DM takes the calls and closes the trip from the laptop. Call in by radio or phone as usual.
+        </p>}
+      </div>
+      {todoAmps.length > 0 && (
+        <div className="card todo">
+          <h3>To do</h3>
+          <button className="rowbtn" onClick={() => go('amps')}>
+            <span><span className="t">{todoAmps.length === 1
+              ? 'Read and sign 1 AMP'
+              : 'Read and sign ' + todoAmps.length + ' AMPs'}</span>
+              <small>{todoAmps.slice(0, 2).map((a: any) => a.title).join(', ')}{todoAmps.length > 2 ? ' and ' + (todoAmps.length - 2) + ' more' : ''}</small>
+            </span><Pill kind="warn">{todoAmps.length}</Pill>
+          </button>
         </div>
-        {tab === 'today' && <Today {...p} />}
-        {tab === 'history' && <History {...p} />}
-        {tab === 'matrix' && <MatrixTab {...p} />}
-        {tab === 'profile' && <Profile {...p} />}
-        {tab === 'logs' && <TrainingLogs {...p} />}
-        {tab === 'log' && <ChangeLog />}
-        {tab === 'amps' && <Amps {...p} />}
-        {tab === 'comps' && <Competencies {...p} />}
-        {tab === 'people' && <People {...p} />}
-        {tab === 'export' && <Export {...p} />}
+      )}
+      <div className="card">
+        <h3>Level 1 progress</h3>
+        <div>{done} of {l1.length} competencies Competent</div>
+        <div className={'bar' + (l1.length && done === l1.length ? ' done' : '')} ><i style={{ width: (l1.length ? (done / l1.length) * 100 : 0) + '%' }} /></div>
+        {!!next.length && <div className="sec">Working on</div>}
+        {next.map((c: any) => <div className="check" key={c.comp_id}><span className="dot wait">→</span><span>{c.name} (L{c.level}) · {c.done} of {c.total} ticks</span></div>)}
+        <button className="btn small" style={{ marginTop: 6 }} onClick={() => go('progress')}>See all progress</button>
+      </div>
+      <div className="card">
+        <h3>The rest of the day</h3>
+        <p className="muted" style={{ margin: '0 0 8px' }}>See who else is out, what they are doing and when they are due back.</p>
+        <button className="btn" onClick={() => go('day')}>Open the day board</button>
       </div>
     </>
+  );
+}
+
+function Intent({ me, d, open, reload }: any) {
+  const [acts, setActs] = useState<number[]>([]); const [buddy, setBuddy] = useState<string[]>([]);
+  const [ov, setOv] = useState(false); const [due, setDue] = useState('15:00'); const [pax, setPax] = useState('12');
+  const [aim, setAim] = useState(''); const [plan, setPlan] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
+  const [wx, setWx] = useState(''); const [busy, setBusy] = useState(false);
+  const act = (id: number) => d.activities.find((a: any) => a.id === id);
+  // Every trip gets a time to be back by. It is the only thing the overdue watch has to go on,
+  // so there is no such thing as a trip that does not need one.
+  const compFor = (a: number) => d.comps.filter((c: any) => c.act_id === a).sort((x: any, y: any) => x.level - y.level)[0];
+  const ampFor = (a: number) => d.amps.find((x: any) => x.act_id === a);
+
+  async function send() {
+    if (!acts.length) return setMsg(['bad', 'Pick at least one activity.']);
+    if (!due) return setMsg(['bad', 'Put in a time to be back by. Without one nobody is watching the clock for you.']);
+    if (!me.centre_id) return setMsg(['bad', 'Your record has no centre set. Ask a manager to add it.']);
+    setBusy(true);
+    const { error } = await supabase.rpc('submit_intention', {
+      p_centre: me.centre_id, p_date: nzToday(), p_acts: acts, p_with: buddy, p_overnight: ov,
+      p_due: due || null, p_pax: pax ? +pax : null, p_outcome: aim, p_plan: plan,
+      p_weather: wx.trim() || null,
+    });
+    setBusy(false);
+    if (error) return setMsg(['bad', error.message]);
+    setActs([]); setBuddy([]); setOv(false); setAim(''); setPlan(''); setWx('');
+    setMsg(['ok', 'Sent to the Duty Manager.']); reload();
+  }
+
+  return (
+    <>
+      {/* What you are out on, to look at. Calls are taken by the DM on the laptop. */}
+      {open.map((i: any) => (
+        <div className="card" key={i.id}>
+          <h3>Out at the moment</h3>
+          <IntLine i={i} d={d} />
+          {i.outcome_of_day && <div style={{ fontSize: 13.5, marginTop: 4 }}>{i.outcome_of_day}</div>}
+          {i.plan && <div><small className="muted">Plan: {i.plan}</small></div>}
+          {i.weather_note && <div><small className="muted">Weather: {i.weather_note}</small></div>}
+          <div><small className="muted">
+            {i.status === 'Approved' ? 'Approved by the DM' : 'Sent. Waiting for the DM'}
+            {i.dm_notes ? ' · DM note: ' + i.dm_notes : ''}
+          </small></div>
+          <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+            Call in by radio or phone as usual. The DM logs it and closes the trip from the laptop.
+          </p>
+        </div>
+      ))}
+      <div className="card">
+        <h3>New intention</h3>
+        <label className="f">Activities</label>
+        <Picker options={d.activities.map((a: any) => ({ id: a.id, label: a.name }))} value={acts} onChange={setActs} placeholder="Search activities…" />
+        {acts.map((a) => {
+          const c = compFor(a), k = ampFor(a);
+          return (
+            <div key={a} style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
+              <b>{act(a)?.name}</b>
+              <div className="check"><span className={'dot ' + (c?.status === 'Competent' ? 'ok' : 'no')}>{c?.status === 'Competent' ? '✓' : '!'}</span>
+                <span><StatusPill status={c?.status} />{c && c.status !== 'Competent' ? ' You need a Competent instructor with you, or DM approval.' : ''}</span></div>
+              <div className="check"><span className={'dot ' + (k?.up_to_date ? 'ok' : 'no')}>{k?.up_to_date ? '✓' : '!'}</span>
+                <span>{!k ? 'No AMP published for this activity yet.' : k.up_to_date ? `AMP signed, version ${k.version}` : 'AMP not signed. Open the AMPs tab to read and sign it.'}</span></div>
+            </div>
+          );
+        })}
+        <label className="f">Working with</label>
+        <Picker options={d.instructors.filter((p: any) => p.id !== me.id).map((p: any) => ({ id: p.id, label: p.name }))} value={buddy} onChange={setBuddy} placeholder="Search for an instructor…" />
+        <div className="check"><input type="checkbox" id="iov" checked={ov} onChange={(e) => setOv(e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="iov">Overnight trip</label></div>
+        <label className="f" htmlFor="idue">Due back by</label>
+        <input id="idue" type="time" value={due} onChange={(e) => setDue(e.target.value)} required />
+        <small className="muted">Every trip needs one. If you are not back by then the DM's screen turns yellow after
+          10 minutes and red after 20, until someone calls in.</small>
+        <label className="f" htmlFor="ipax">Participants</label><input id="ipax" type="number" min={1} value={pax} onChange={(e) => setPax(e.target.value)} />
+        <label className="f" htmlFor="iaim">Outcome of the day</label><input id="iaim" type="text" value={aim} onChange={(e) => setAim(e.target.value)} placeholder="What the group is working towards" />
+        <Quick items={AIM_QUICK} onPick={(t) => setAim(aim.trim() ? aim.trim() + ', ' + t : t)} />
+        <label className="f" htmlFor="iplan">Plan or route</label><textarea id="iplan" rows={2} value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="Where you are going, in order" />
+        <Quick items={PLAN_QUICK} onPick={(t) => setPlan(plan.trim() ? plan.trim() + ' – ' + t : t)} />
+        <label className="f" htmlFor="iwx">A comment on the weather (optional)</label>
+        <input id="iwx" type="text" value={wx} onChange={(e) => setWx(e.target.value)} placeholder="What you are seeing out there" />
+        <small className="muted">Goes to the DM alongside their own forecast.</small>
+        <div className={'msg ' + msg[0]}>{msg[1]}</div>
+        <button className="btn primary" style={{ width: '100%' }} disabled={busy} onClick={send}>Send to Duty Manager</button>
+      </div>
+    </>
+  );
+}
+
+/** Record a training session, and open any session you are named on. */
+function TrainingLog({ me, d, reload }: any) {
+  const [mine, setMine] = useState<any[]>([]);
+  const [sel, setSel] = useState<any>(null);
+  const [done, setDone] = useState('');
+
+  const load = useCallback(async () => {
+    // Every session that names you: about you, written by you, or run by you.
+    const { data } = await supabase.from('training_logs')
+      .select('*, training_log_comps(comp_id)')
+      .or(`instructor_id.eq.${me.id},filled_by.eq.${me.id},trainer_id.eq.${me.id}`)
+      .order('date', { ascending: false }).limit(100);
+    setMine(data || []);
+  }, [me.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const compName = (id: number) => { const c = (d.allComps || []).find((x: any) => x.id === id); return c ? c.name + ' L' + c.level : ''; };
+  const role = (l: any) => l.instructor_id === me.id ? 'About you'
+    : l.filled_by === me.id ? 'Written by you' : 'You ran it';
+
+  // The same component the manager screen uses, so both sides always show a log the same way.
+  if (sel) return (
+    <LogDetail log={sel} canEdit={sel.filled_by === me.id} subtitle={role(sel)} compName={compName}
+      onBack={() => setSel(null)}
+      onSaved={(next: any) => { setMine((p) => p.map((x) => (x.id === next.id ? { ...x, ...next } : x))); setSel(next); }} />
+  );
+  return (
+    <>
+      {done && <div className="hl">{done}</div>}
+      <TrainingLogForm me={me} people={d.instructors || []} comps={d.allComps || []}
+        onDone={(m: string) => { setDone(m); load(); reload?.(); }} />
+      <h3 style={{ marginTop: 18 }}>Every session you are named on</h3>
+      {mine.length === 0 ? <p className="muted">Nothing yet.</p> : mine.map((l) => (
+        <button className="rowbtn" key={l.id} onClick={() => setSel(l)}>
+          <span style={{ flex: 1 }}>
+            <span className="t">{fd(l.date)} · {l.activity_text || 'Training'}</span>
+            <small>{role(l)} · trainer {l.trainer || 'not named'}
+              {(l.training_log_comps || []).length ? ' · ' + (l.training_log_comps || []).map((x: any) => compName(x.comp_id)).filter(Boolean).join(', ') : ''}</small>
+          </span>
+          {l.outcome ? <Pill kind={STATUS[l.outcome] || 'mute'}>{l.outcome}</Pill> : null}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function Progress({ me, d, reload }: any) {
+  const [comp, setComp] = useState<any>(null); const [lines, setLines] = useState<any[]>([]); const [ticks, setTicks] = useState<Set<string>>(new Set());
+  const [tickInfo, setTickInfo] = useState<Map<string, any>>(new Map());
+  const [ampSigned, setAmpSigned] = useState(false);
+  const open = useCallback(async (c: any) => {
+    setComp(c);
+    const { data: ls } = await supabase.from('competency_lines').select('*').eq('comp_id', c.comp_id).order('sort_order').order('id');
+    // One indexed lookup instead of a web address listing every line number on the form.
+    const { data: so } = (ls || []).length
+      ? await supabase.from('comp_signoffs').select('line_id,tick_type,initials,signed_by,observed_on, competency_lines!inner(comp_id)')
+          .eq('instructor_id', me.id).eq('competency_lines.comp_id', c.comp_id)
+      : { data: [] as any[] };
+    setLines(ls || []); setTicks(new Set((so || []).map((s: any) => s.line_id + '|' + s.tick_type)));
+    setTickInfo(new Map((so || []).map((s: any) => [s.line_id + '|' + s.tick_type, s])));
+    setAmpSigned(!!d.amps.find((a: any) => a.act_id === c.act_id)?.signed_version);
+  }, [me.id, d.amps]);
+  async function toggleSelf(l: any, _t: string, on: boolean) {
+    if (on) await supabase.from('comp_signoffs').delete().eq('instructor_id', me.id).eq('line_id', l.id).eq('tick_type', 'self');
+    else await supabase.from('comp_signoffs').insert({ instructor_id: me.id, line_id: l.id, tick_type: 'self', initials: me.initials || null, source: 'self' });
+    await open(comp); reload();
+  }
+  if (!comp) return (
+    <>
+      <div className="card">
+        <h3>My competencies</h3>
+        {d.comps.length ? d.comps.map((c: any) => (
+          <button key={c.comp_id} className="rowbtn" onClick={() => open(c)}>
+            <span style={{ flex: 1 }}><span className="t">{c.name} (L{c.level})</span><small>{c.done} of {c.total} ticks</small></span><StatusPill status={c.status} />
+          </button>
+        )) : <p className="muted" style={{ margin: 0 }}>No competencies have been set up yet.</p>}
+      </div>
+      <div className="card muted" style={{ fontSize: 13 }}><b>Direct</b>: you run it with a Competent instructor beside you. <b>Indirect</b>: a Competent instructor is nearby. <b>Competent</b>: you run it yourself.</div>
+    </>
+  );
+  const fresh = d.comps.find((c: any) => c.comp_id === comp.comp_id) || comp;
+  return (
+    <>
+      <button className="back" onClick={() => setComp(null)}>‹ All competencies</button>
+      <div className="card">
+        <h3>{fresh.name} (L{fresh.level}) <StatusPill status={fresh.status} /></h3>
+        <div>{fresh.done} of {fresh.total} ticks</div>
+        <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>Tick <b>Self</b> when you think you can do a line. It tells your trainer you are ready to be observed. Grey boxes are not on the form for that line. The other boxes (observations and assessor) are ticked by a manager.</p>
+      </div>
+      <div className="card">
+        {lines.length ? <TickGrid labels={fresh.box_labels} lines={lines} has={(l, t) => (l.auto_from_amp ? ampSigned : ticks.has(l.id + '|' + t))} canClick={(l, t) => t === 'self' && !l.auto_from_amp} onClick={toggleSelf}
+          ini={(l, t) => tickInfo.get(l.id + '|' + t)?.initials || ''}
+          hint={(l, t) => { const s = tickInfo.get(l.id + '|' + t); return s ? `${s.initials ? s.initials + ' · ' : ''}${s.signed_by || 'You'}${s.observed_on ? ' · ' + s.observed_on : ''}` : (t === 'self' ? 'Tick when you can do this' : 'Ticked by a manager'); }} />
+          : <span className="muted">No lines loaded yet.</span>}
+      </div>
+    </>
+  );
+}
+
+function Amps({ d, reload }: any) {
+  const [sel, setSel] = useState<any>(null); const [amp, setAmp] = useState<any>(null); const [haz, setHaz] = useState<any[]>([]); const [msg, setMsg] = useState('');
+  async function open(a: any) {
+    setSel(a); setMsg('');
+    const [x, h] = await Promise.all([supabase.from('amps').select('*').eq('id', a.amp_id).single(), supabase.from('amp_hazards').select('*').eq('amp_id', a.amp_id).order('sort_order')]);
+    setAmp(x.data); setHaz(h.data || []);
+  }
+  async function ack() {
+    const { error } = await supabase.rpc('acknowledge_amp', { p_amp: sel.amp_id });
+    if (error) setMsg(error.message); else { await reload(); setSel({ ...sel, up_to_date: true, signed_version: sel.version }); }
+  }
+  if (!sel) return (
+    <div className="card">
+      <h3>Activity Management Plans</h3>
+      {d.amps.length ? d.amps.map((a: any) => (
+        <button key={a.amp_id} className="rowbtn" onClick={() => open(a)}>
+          <span><span className="t">{a.title}</span><small>{a.up_to_date ? `Signed version ${a.version} · up to date` : a.signed_version ? `You signed version ${a.signed_version}. Current is version ${a.version}` : 'Not yet signed'}</small></span>
+          <Pill kind={a.up_to_date ? 'good' : 'warn'}>{a.up_to_date ? 'Up to date' : a.signed_version ? 'Updated' : 'To sign'}</Pill>
+        </button>
+      )) : <p className="muted" style={{ margin: 0 }}>No AMPs have been published yet.</p>}
+    </div>
+  );
+  return (
+    <>
+      <button className="back" onClick={() => { setSel(null); setAmp(null); }}>‹ All AMPs</button>
+      {amp && (
+        <div className="card amp">
+          <h3>{amp.title}</h3>
+          <small className="muted">{[amp.folder, amp.activity_number && 'Activity ' + amp.activity_number, 'version ' + amp.version, 'updated ' + fd(amp.updated_at), amp.updated_by && 'by ' + amp.updated_by].filter(Boolean).join(' · ')}</small>
+          {amp.change_summary && <div className="hl"><b>What changed in version {amp.version}</b><br />{amp.change_summary}</div>}
+          {amp.previous_incidents && <div className="inc"><b>Previous incidents</b><br />{amp.previous_incidents}</div>}
+          <dl>{AMP_FIELDS.filter(([k]) => amp[k]).map(([k, l]) => <span key={k} style={{ display: 'contents' }}><dt>{l}</dt><dd>{amp[k]}</dd></span>)}</dl>
+          {!!haz.length && (
+            <div className="scroll"><table className="haz"><thead><tr><th>Control</th><th>Activity</th><th>Hazard</th><th>Management strategy</th></tr></thead>
+              <tbody>{haz.map((h) => <tr key={h.id}><td>{h.control}</td><td>{h.activity_part}</td><td>{h.hazard}</td><td>{h.management_strategy}</td></tr>)}</tbody></table></div>
+          )}
+        </div>
+      )}
+      {amp && <AmpMedia ampId={amp.id} />}
+      {sel.up_to_date
+        ? <div className="card"><div className="check"><span className="dot ok">✓</span>You acknowledged version {sel.version}. Up to date.</div></div>
+        : <button className="btn primary" style={{ width: '100%' }} onClick={ack}>I have read and understood this AMP and its incidents</button>}
+      <div className="msg bad">{msg}</div>
+    </>
+  );
+}
+
+function Logbook({ me, d }: any) {
+  const mine = d.ints;
+  return (
+    <>
+      <div className="card">
+        <h3>My logbook</h3>
+        <div>{new Set(mine.map((i: any) => i.date)).size} days · {new Set(mine.flatMap((i: any) => i.acts)).size} activities</div>
+        <button className="btn primary" style={{ width: '100%', marginTop: 10 }} onClick={() => downloadCsv('logbook-' + me.name.toLowerCase().replace(/\s+/g, '-') + '.csv', intentionRows(mine, d.instructors, d.activities))}>Export my logbook</button>
+        <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 0' }}>Downloads a spreadsheet. Yours to keep when you leave.</p>
+      </div>
+      <div className="card">
+        {mine.length ? mine.map((i: any) => (
+          <div className="lb" key={i.id}>
+            <small>{i.status}{i.called_in_as ? ' · ' + i.called_in_as + ' ' + hm(i.called_in_at) : ''}</small>
+            <IntLine i={i} d={d} />
+            {i.outcome_of_day && <div>Outcome of the day: {i.outcome_of_day}</div>}
+            {i.plan && <small>Plan: {i.plan}</small>}
+            {i.debrief_notes && <div><small>Notes: {i.debrief_notes}</small></div>}
+          </div>
+        )) : <span className="muted">Nothing logged yet.</span>}
+      </div>
+    </>
+  );
+}
+
+function Account() {
+  const router = useRouter();
+  const [pw, setPw] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
+  async function change() {
+    if (pw.length < 10) return setMsg(['bad', 'Use at least 10 characters.']);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setMsg(error ? ['bad', error.message] : ['ok', 'Password changed.']); if (!error) setPw('');
+  }
+  return (
+    <div className="card">
+      <h3>Account</h3>
+      <label className="f" htmlFor="npw">New password</label>
+      <input id="npw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+      <div className={'msg ' + msg[0]}>{msg[1]}</div>
+      <div className="rowflex"><button className="btn primary" onClick={change}>Change password</button>
+        <button className="btn" onClick={async () => { await supabase.auth.signOut(); router.replace('/login'); }}>Sign out</button></div>
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '14px 0' }} />
+      <h3>Put URMA on your home screen</h3>
+      <p className="muted" style={{ fontSize: 13.5 }}>
+        On an iPhone: tap the share button at the bottom of Safari, then <b>Add to Home Screen</b>.
+        On Android: tap the three dots in Chrome, then <b>Add to Home screen</b>. It then opens like an app
+        and you stay signed in.
+      </p>
+    </div>
   );
 }
