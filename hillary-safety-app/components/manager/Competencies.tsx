@@ -85,7 +85,15 @@ export default function Competencies({ base, reload }: any) {
             <div><label className="f" htmlFor="ca">Activity it unlocks</label><select id="ca" value={c.act_id} onChange={(e) => saveC({ act_id: e.target.value ? +e.target.value : '' })}><option value="">None</option>{base.activities.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
             <div><label className="f" htmlFor="cc">Centre</label><select id="cc" value={c.centre_id} onChange={(e) => saveC({ centre_id: e.target.value ? +e.target.value : '' })}><option value="">Both</option>{base.centres.map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
             <div><label className="f" htmlFor="cv">Version</label><input id="cv" type="text" value={c.version} onChange={(e) => setC({ ...c, version: e.target.value })} onBlur={(e) => saveC({ version: e.target.value })} placeholder="2024, version 9" /></div>
+            <div><label className="f" htmlFor="crf">Everyone needs it</label>
+              <select id="crf" value={c.required_for_all ? '1' : '0'} onChange={(e) => saveC({ required_for_all: e.target.value === '1' })}>
+                <option value="0">No</option><option value="1">Yes — a core competency</option>
+              </select></div>
           </div>
+          {c.required_for_all && <p className="muted" style={{ fontSize: 13, margin: '4px 0 0' }}>
+            A core competency is required for every activity, by everyone. It is also where a line that
+            is repeated across lots of competencies can be lifted to, so it only has to be ticked once.
+          </p>}
           {HEAD.map(([k, l]) => <div key={k}><label className="f" htmlFor={'cf-' + k}>{l}</label><textarea id={'cf-' + k} rows={2} value={c[k]} onChange={(e) => setC({ ...c, [k]: e.target.value })} onBlur={(e) => saveC({ [k]: e.target.value })} /></div>)}
           <label className="f">Box names on the paper form (leave blank for the standard name)</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: '0 10px' }}>
