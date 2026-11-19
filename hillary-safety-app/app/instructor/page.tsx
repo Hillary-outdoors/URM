@@ -24,7 +24,7 @@ export default function InstructorApp() {
   const [err, setErr] = useState('');
 
   const load = useCallback(async (m: any) => {
-    const [act, ins, amp, comp, ints, cen, all, co] = await Promise.all([
+    const [act, ins, amp, comp, ints, cen, all] = await Promise.all([
       supabase.from('activities').select('*').eq('active', true).order('name'),
       supabase.from('instructors').select('id,name,initials,centre_id,employment,account_type').eq('account_type', 'instructor').neq('employment', 'Past staff').order('name'),
       supabase.from('v_amp_status').select('*').eq('instructor_id', m.id).gt('version', 0).order('title'),
@@ -32,9 +32,8 @@ export default function InstructorApp() {
       supabase.from('intentions').select(INT_SELECT).order('date', { ascending: false }).limit(500),
       supabase.from('centres').select('*').order('id'),
       supabase.from('competencies').select('id,name,level,centre_id').order('level').order('name'),
-      supabase.from('call_options').select('*').order('sort_order'),
     ]);
-    const bad = [act, ins, amp, comp, ints, cen, all, co].find((r) => r.error);
+    const bad = [act, ins, amp, comp, ints, cen, all].find((r) => r.error);
     if (bad) setErr(bad.error!.message);
     setD({
       activities: act.data || [], instructors: ins.data || [], amps: amp.data || [],
@@ -43,7 +42,6 @@ export default function InstructorApp() {
       ints: (ints.data || []).map(shapeInt),
       centres: cen.data || [],
       allComps: (all.data || []).filter((c: any) => !c.centre_id || !m.centre_id || c.centre_id === m.centre_id),
-      callOptions: co.data || [],
     });
   }, []);
 
@@ -100,35 +98,54 @@ function IntLine({ i, d }: any) {
   );
 }
 
+/**
+ * The home screen is what you are doing today, and little else. The AMP list used to sit here a
+ * row at a time and ran off the bottom of the phone, so it is one line now and the AMPs tab has
+ * the detail.
+ */
 function Home({ d, open, todoAmps, go }: any) {
   const l1 = d.comps.filter((c: any) => c.level === 1), done = l1.filter((c: any) => c.status === 'Competent').length;
   const next = d.comps.filter((c: any) => c.status !== 'Competent').slice(0, 3);
   return (
     <>
-      <div className="card todo">
-        <h3>To do</h3>
-        {open.map((i: any) => (
-          <button key={i.id} className="rowbtn" onClick={() => go('intent')}>
-            <span><span className="t">Call in when the activity ends</span><small>{names(i.acts, d.activities).join(' + ')}</small></span><Pill kind="warn">Open</Pill>
-          </button>
-        ))}
-        {todoAmps.map((a: any) => (
-          <button key={a.amp_id} className="rowbtn" onClick={() => go('amps')}>
-            <span><span className="t">Read and acknowledge: {a.title}</span>
-              <small>{a.signed_version ? `You signed version ${a.signed_version}. Current is version ${a.version}` : 'Not yet signed'}</small></span><Pill kind="warn">Open</Pill>
-          </button>
-        ))}
-        {!open.length && !todoAmps.length && <div className="check"><span className="dot ok">✓</span>Nothing waiting.</div>}
-      </div>
       <div className="card">
-        <h3>Open intentions</h3>
+        <h3>Today</h3>
         {open.length ? open.map((i: any) => (
-          <div className="check" key={i.id}>
-            <span className={'dot ' + (i.status === 'Approved' ? 'ok' : 'wait')}>{i.status === 'Approved' ? '✓' : '…'}</span>
-            <span><IntLine i={i} d={d} /><div><small className="muted">{i.status === 'Approved' ? 'Approved by DM' : 'Sent. Waiting for DM'}{i.dm_notes ? ' · DM note: ' + i.dm_notes : ''}</small></div></span>
+          <div key={i.id} style={{ marginBottom: 10 }}>
+            <div className="check">
+              <span className={'dot ' + (i.status === 'Approved' ? 'ok' : 'wait')}>{i.status === 'Approved' ? '✓' : '…'}</span>
+              <span style={{ flex: 1 }}>
+                <IntLine i={i} d={d} />
+                {i.outcome_of_day && <div style={{ fontSize: 13.5 }}>{i.outcome_of_day}</div>}
+                {i.plan && <div><small className="muted">Plan: {i.plan}</small></div>}
+                {i.weather_note && <div><small className="muted">Weather: {i.weather_note}</small></div>}
+                <div><small className="muted">
+                  {i.status === 'Approved' ? 'Approved by the DM' : 'Sent. Waiting for the DM'}
+                  {i.dm_notes ? ' · DM note: ' + i.dm_notes : ''}
+                </small></div>
+              </span>
+            </div>
           </div>
-        )) : <><p className="muted" style={{ margin: '0 0 8px' }}>None open.</p><button className="btn primary" onClick={() => go('intent')}>Submit intention</button></>}
+        )) : <>
+          <p className="muted" style={{ margin: '0 0 8px' }}>Nothing out at the moment.</p>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => go('intent')}>Submit an intention</button>
+        </>}
+        {!!open.length && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+          The DM takes the calls and closes the trip from the laptop. Call in by radio or phone as usual.
+        </p>}
       </div>
+      {todoAmps.length > 0 && (
+        <div className="card todo">
+          <h3>To do</h3>
+          <button className="rowbtn" onClick={() => go('amps')}>
+            <span><span className="t">{todoAmps.length === 1
+              ? 'Read and sign 1 AMP'
+              : 'Read and sign ' + todoAmps.length + ' AMPs'}</span>
+              <small>{todoAmps.slice(0, 2).map((a: any) => a.title).join(', ')}{todoAmps.length > 2 ? ' and ' + (todoAmps.length - 2) + ' more' : ''}</small>
+            </span><Pill kind="warn">{todoAmps.length}</Pill>
+          </button>
+        </div>
+      )}
       <div className="card">
         <h3>Level 1 progress</h3>
         <div>{done} of {l1.length} competencies Competent</div>
@@ -150,7 +167,7 @@ function Intent({ me, d, open, reload }: any) {
   const [acts, setActs] = useState<number[]>([]); const [buddy, setBuddy] = useState<string[]>([]);
   const [ov, setOv] = useState(false); const [due, setDue] = useState('15:00'); const [pax, setPax] = useState('12');
   const [aim, setAim] = useState(''); const [plan, setPlan] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
-  const [notes, setNotes] = useState<Record<number, string>>({}); const [busy, setBusy] = useState(false);
+  const [wx, setWx] = useState(''); const [busy, setBusy] = useState(false);
   const act = (id: number) => d.activities.find((a: any) => a.id === id);
   // Every trip gets a time to be back by. It is the only thing the overdue watch has to go on,
   // so there is no such thing as a trip that does not need one.
@@ -165,30 +182,31 @@ function Intent({ me, d, open, reload }: any) {
     const { error } = await supabase.rpc('submit_intention', {
       p_centre: me.centre_id, p_date: nzToday(), p_acts: acts, p_with: buddy, p_overnight: ov,
       p_due: due || null, p_pax: pax ? +pax : null, p_outcome: aim, p_plan: plan,
+      p_weather: wx.trim() || null,
     });
     setBusy(false);
     if (error) return setMsg(['bad', error.message]);
-    setActs([]); setBuddy([]); setOv(false); setAim(''); setPlan(''); setMsg(['ok', 'Sent to the Duty Manager.']); reload();
-  }
-  async function callIn(i: any, words: string, closes?: boolean) {
-    const { error } = await supabase.rpc('log_call', { p_intention: i.id, p_words: words, p_note: notes[i.id] || null, p_closes: closes ?? null });
-    if (error) setMsg(['bad', error.message]); else reload();
+    setActs([]); setBuddy([]); setOv(false); setAim(''); setPlan(''); setWx('');
+    setMsg(['ok', 'Sent to the Duty Manager.']); reload();
   }
 
   return (
     <>
+      {/* What you are out on, to look at. Calls are taken by the DM on the laptop. */}
       {open.map((i: any) => (
-        <div className="card todo" key={i.id}>
-          <h3>Activity finished?</h3>
+        <div className="card" key={i.id}>
+          <h3>Out at the moment</h3>
           <IntLine i={i} d={d} />
-          <label className="f">Notes on the day (optional)</label>
-          <textarea rows={2} value={notes[i.id] || ''} onChange={(e) => setNotes({ ...notes, [i.id]: e.target.value })} placeholder="Any changes, anything to pass on" />
-          <label className="f">Make a call</label>
-          <div className="grid2">{(d.callOptions || []).map((o: any) => (
-            <button key={o.id} className={'btn' + (o.closes_trip ? ' primary' : '')}
-              onClick={() => callIn(i, o.words, o.closes_trip)}>{o.words}</button>
-          ))}</div>
-          <small className="muted">Only "Back at base" ends the trip. Everything else is logged and the DM sees it.</small>
+          {i.outcome_of_day && <div style={{ fontSize: 13.5, marginTop: 4 }}>{i.outcome_of_day}</div>}
+          {i.plan && <div><small className="muted">Plan: {i.plan}</small></div>}
+          {i.weather_note && <div><small className="muted">Weather: {i.weather_note}</small></div>}
+          <div><small className="muted">
+            {i.status === 'Approved' ? 'Approved by the DM' : 'Sent. Waiting for the DM'}
+            {i.dm_notes ? ' · DM note: ' + i.dm_notes : ''}
+          </small></div>
+          <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+            Call in by radio or phone as usual. The DM logs it and closes the trip from the laptop.
+          </p>
         </div>
       ))}
       <div className="card">
@@ -219,6 +237,9 @@ function Intent({ me, d, open, reload }: any) {
         <Quick items={AIM_QUICK} onPick={(t) => setAim(aim.trim() ? aim.trim() + ', ' + t : t)} />
         <label className="f" htmlFor="iplan">Plan or route</label><textarea id="iplan" rows={2} value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="Where you are going, in order" />
         <Quick items={PLAN_QUICK} onPick={(t) => setPlan(plan.trim() ? plan.trim() + ' – ' + t : t)} />
+        <label className="f" htmlFor="iwx">A comment on the weather (optional)</label>
+        <input id="iwx" type="text" value={wx} onChange={(e) => setWx(e.target.value)} placeholder="What you are seeing out there" />
+        <small className="muted">Goes to the DM alongside their own forecast.</small>
         <div className={'msg ' + msg[0]}>{msg[1]}</div>
         <button className="btn primary" style={{ width: '100%' }} disabled={busy} onClick={send}>Send to Duty Manager</button>
       </div>
@@ -226,39 +247,150 @@ function Intent({ me, d, open, reload }: any) {
   );
 }
 
-/** Record a training session, and see the ones already written about you or by you. */
+/** The wording a log's author is allowed to tidy up afterwards. */
+const LOG_EDIT: [string, string, boolean][] = [
+  ['activity_text', 'Activity or pursuit', false], ['location', 'Location', false],
+  ['outcome_comments', 'Comments on the outcome', false],
+  ['summary', 'Summary of the session', true], ['how_it_went', 'How the session went', true],
+  ['weather_conditions', 'Weather and environmental conditions', true],
+  ['self_observation', 'The instructor’s own reflection', true],
+  ['dev_needs', 'Developmental needs identified', true],
+  ['feedback_given', 'Feedback given and next steps', true],
+];
+/** Kept from the Smartsheet years. Shown when a log has them, never asked for again. */
+const LOG_OLD: [string, string][] = [
+  ['session_objectives', 'Session objectives'], ['sms_ok', 'Followed the SMS'],
+  ['sms_comments', 'Comments on hazards and the SMS'], ['next_steps', 'Recommended next steps'],
+  ['client_group', 'Client group present'], ['training_context', 'Clients present'],
+  ['folder_updated', 'Folder updated'],
+];
+
+/** Record a training session, and open any session you are named on. */
 function TrainingLog({ me, d, reload }: any) {
   const [mine, setMine] = useState<any[]>([]);
-  const [done, setDone] = useState('');
+  const [sel, setSel] = useState<any>(null);
+  const [edit, setEdit] = useState<any>(null);
+  const [done, setDone] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
+
   const load = useCallback(async () => {
+    // Every session that names you: about you, written by you, or run by you.
     const { data } = await supabase.from('training_logs')
-      .select('id,date,trainer,activity_text,outcome,summary,ticks_made,instructor_id,filled_by, training_log_comps(comp_id)')
-      .or(`instructor_id.eq.${me.id},filled_by.eq.${me.id}`).order('date', { ascending: false }).limit(60);
+      .select('*, training_log_comps(comp_id)')
+      .or(`instructor_id.eq.${me.id},filled_by.eq.${me.id},trainer_id.eq.${me.id}`)
+      .order('date', { ascending: false }).limit(100);
     setMine(data || []);
   }, [me.id]);
   useEffect(() => { load(); }, [load]);
+
   const compName = (id: number) => { const c = (d.allComps || []).find((x: any) => x.id === id); return c ? c.name + ' L' + c.level : ''; };
+  const role = (l: any) => l.instructor_id === me.id ? 'About you'
+    : l.filled_by === me.id ? 'Written by you' : 'You ran it';
+
+  async function saveEdit() {
+    setMsg(['', '']);
+    const patch: any = {};
+    LOG_EDIT.forEach(([k]) => { patch[k] = (edit[k] || '').trim() || null; });
+    ['clients_present', 'students_aware', 'linked_to_frame'].forEach((k) => { patch[k] = edit[k] || null; });
+    const { error } = await supabase.from('training_logs').update(patch).eq('id', sel.id);
+    if (error) return setMsg(['bad', error.message]);
+    setMsg(['ok', 'Saved.']); setSel({ ...sel, ...patch }); setEdit(null); load();
+  }
+
+  if (sel) {
+    const canEdit = sel.filled_by === me.id;
+    return (
+      <>
+        <button className="back" onClick={() => { setSel(null); setEdit(null); setMsg(['', '']); }}>‹ All sessions</button>
+        <div className="card">
+          <div className="rowflex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h3 style={{ margin: 0 }}>{fd(sel.date)} · {sel.activity_text || 'Training'}</h3>
+            {sel.outcome ? <Pill kind={STATUS[sel.outcome] || 'mute'}>{sel.outcome}</Pill> : null}
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {role(sel)} · trainer {sel.trainer || 'not named'}
+            {sel.days ? ' · ' + sel.days + ' day' + (Number(sel.days) === 1 ? '' : 's') : ''}
+            {sel.ticks_made ? ' · ' + sel.ticks_made + ' boxes ticked' : ''}
+          </div>
+          {(sel.training_log_comps || []).length > 0 && <div style={{ marginTop: 6 }}>
+            {(sel.training_log_comps || []).map((x: any) => <span key={x.comp_id} style={{ marginRight: 6 }}><Pill>{compName(x.comp_id)}</Pill></span>)}
+          </div>}
+        </div>
+
+        {!edit && (
+          <div className="card">
+            <dl>
+              {[['training_type', 'Training type'], ['session_type', 'Type of session'], ['location', 'Location'],
+                ['outcome_comments', 'Comments on the outcome'], ['summary', 'Summary of the session'],
+                ['how_it_went', 'How the session went'], ['weather_conditions', 'Weather and environmental conditions'],
+                ['clients_present', 'Clients present'], ['students_aware', 'Students knew the objective'],
+                ['linked_to_frame', 'Linked to the daily frame'],
+                ['self_observation', 'The instructor’s own reflection'],
+                ['dev_needs', 'Developmental needs identified'],
+                ['feedback_given', 'Feedback given and next steps'],
+                ...LOG_OLD]
+                .filter(([k]) => sel[k])
+                .map(([k, l]) => <span key={k} style={{ display: 'contents' }}><dt>{l}</dt><dd>{sel[k]}</dd></span>)}
+            </dl>
+            <div className={'msg ' + msg[0]}>{msg[1]}</div>
+            {canEdit
+              ? <><button className="btn" onClick={() => setEdit({ ...sel })}>Edit the wording</button>
+                  <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+                    You can tidy up what you wrote. To change the outcome or the boxes it ticked, ask a
+                    manager to undo the entry — that puts the ticks back and you can write it again.
+                  </p></>
+              : <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                  Written by {sel.filled_by === sel.instructor_id ? 'the instructor themselves' : 'someone else'}, so only they or a manager can change it.
+                </p>}
+          </div>
+        )}
+
+        {edit && (
+          <div className="card">
+            <h3 style={{ fontSize: 15 }}>Edit the wording</h3>
+            {LOG_EDIT.map(([k, label, big]) => (
+              <span key={k} style={{ display: 'contents' }}>
+                <label className="f" htmlFor={'e-' + k}>{label}</label>
+                {big
+                  ? <textarea id={'e-' + k} rows={3} value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />
+                  : <input id={'e-' + k} type="text" value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
+              </span>
+            ))}
+            {[['clients_present', 'Clients present during the session'], ['students_aware', 'Students knew the objective and it suited them'],
+              ['linked_to_frame', 'Linked to the daily frame']].map(([k, label]) => (
+              <span key={k} style={{ display: 'contents' }}>
+                <label className="f" htmlFor={'e-' + k}>{label}</label>
+                <select id={'e-' + k} value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })}>
+                  <option value="">—</option><option value="Yes">Yes</option><option value="No">No</option>
+                  {k === 'linked_to_frame' && <option value="Not applicable">Not applicable</option>}
+                </select>
+              </span>
+            ))}
+            <div className={'msg ' + msg[0]}>{msg[1]}</div>
+            <div className="rowflex" style={{ marginTop: 10 }}>
+              <button className="btn primary" onClick={saveEdit}>Save</button>
+              <button className="btn" onClick={() => { setEdit(null); setMsg(['', '']); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       {done && <div className="hl">{done}</div>}
       <TrainingLogForm me={me} people={d.instructors || []} comps={d.allComps || []}
         onDone={(m: string) => { setDone(m); load(); reload?.(); }} />
-      <h3 style={{ marginTop: 18 }}>Sessions about you, and ones you wrote</h3>
+      <h3 style={{ marginTop: 18 }}>Every session you are named on</h3>
       {mine.length === 0 ? <p className="muted">Nothing yet.</p> : mine.map((l) => (
-        <div className="card" key={l.id} style={{ marginBottom: 8 }}>
-          <div className="rowflex" style={{ justifyContent: 'space-between' }}>
-            <b>{fd(l.date)} · {l.activity_text || 'Training'}</b>
-            <span>{l.outcome ? <Pill kind={STATUS[l.outcome] || 'mute'}>{l.outcome}</Pill> : null}</span>
-          </div>
-          <div className="muted" style={{ fontSize: 13 }}>
-            {l.instructor_id === me.id ? 'About you' : 'Written by you'} · trainer {l.trainer || 'not named'}
-            {l.ticks_made ? ' · ' + l.ticks_made + ' boxes ticked' : ''}
-          </div>
-          {(l.training_log_comps || []).length > 0 && <div style={{ marginTop: 4 }}>
-            {(l.training_log_comps || []).map((x: any) => <span key={x.comp_id} style={{ marginRight: 6 }}><Pill>{compName(x.comp_id)}</Pill></span>)}
-          </div>}
-          {l.summary && <p style={{ fontSize: 13.5, marginBottom: 0 }}>{l.summary}</p>}
-        </div>
+        <button className="rowbtn" key={l.id} onClick={() => setSel(l)}>
+          <span style={{ flex: 1 }}>
+            <span className="t">{fd(l.date)} · {l.activity_text || 'Training'}</span>
+            <small>{role(l)} · trainer {l.trainer || 'not named'}
+              {(l.training_log_comps || []).length ? ' · ' + (l.training_log_comps || []).map((x: any) => compName(x.comp_id)).filter(Boolean).join(', ') : ''}</small>
+          </span>
+          {l.outcome ? <Pill kind={STATUS[l.outcome] || 'mute'}>{l.outcome}</Pill> : null}
+        </button>
       ))}
     </>
   );
