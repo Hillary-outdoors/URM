@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import AmpMedia from '@/components/AmpMedia';
 import { supabase } from '@/lib/supabase';
 import { fd } from '@/lib/util';
 import { Pill } from '@/components/ui';
@@ -97,6 +98,14 @@ export default function Amps({ base, reload }: any) {
             </div>
           ))}
           <button className="btn small" onClick={() => setHaz([...haz, { control: 'Minimise' }])}>+ Add line</button>
+
+          {/* Attaches straight away, unlike the rest of this page. Adding a map should not make
+              everyone sign the AMP again, so it sits outside the version. */}
+          <AmpMedia ampId={id} canEdit addedBy={by || base.me?.name} />
+          <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
+            Maps and photos save as soon as you add them — they are not part of a version, so adding
+            one does not ask everyone to sign the AMP again.
+          </p>
           <div className="grid2" style={{ marginTop: 10 }}>
             <div><label className="f" htmlFor="ech">What changed in this version (instructors see this highlighted)</label><textarea id="ech" rows={2} value={change} onChange={(e) => setChange(e.target.value)} /></div>
             <div><label className="f" htmlFor="eby">Your name</label><input id="eby" type="text" value={by} onChange={(e) => setBy(e.target.value)} /></div>

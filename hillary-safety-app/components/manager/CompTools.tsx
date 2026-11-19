@@ -235,6 +235,7 @@ function Dups({ keepTicks, onDone, onErr }: any) {
   const [rows, setRows] = useState<any[]>([]);
   const [all, setAll] = useState<any[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [dest, setDest] = useState<Record<string, number>>({});   // chosen home, per wording
   const [busy, setBusy] = useState('');
   const [load0, setLoad0] = useState(true);
 
@@ -253,36 +254,27 @@ function Dups({ keepTicks, onDone, onErr }: any) {
   const nameOf = (id: number) => { const c = all.find((x: any) => x.id === id); return c ? `${c.name} L${c.level}` : 'competency ' + id; };
   const core = all.filter((c: any) => c.required_for_all);
 
-  /** Keep the copy in one competency and remove it from the others. */
-  async function keepOnly(g: any, compId: number) {
+  /**
+   * Say this line once, in the competency chosen. If that competency already has a copy, that one
+   * stays and the rest go. If it does not, one is moved there first — ticks and all — and then the
+   * rest go. One path covers both, which matters when a wording has 33 copies and a button for each
+   * would be unusable.
+   */
+  async function sayItIn(g: any, compId: number) {
     const { data: ls } = await supabase.from('competency_lines').select('id,comp_id').in('id', g.line_ids);
-    const keepLine = (ls || []).find((l: any) => l.comp_id === compId);
-    const drop = (ls || []).filter((l: any) => l.comp_id !== compId).map((l: any) => l.id);
-    if (!keepLine || !drop.length) return onErr('Could not work out which copy to keep. Reload and try again.');
-    if (!window.confirm(`Remove this line from ${drop.length} competenc${drop.length === 1 ? 'y' : 'ies'} and keep only one copy?`)) return;
-    setBusy(g.norm);
-    const { data, error } = await supabase.rpc('resolve_duplicate', { p_keep_line: keepLine.id, p_drop_lines: drop, p_move_ticks: keepTicks });
-    setBusy('');
-    if (error) return onErr(error.message);
-    const r = Array.isArray(data) ? data[0] : data;
-    await load();
-    onDone(`Kept one copy. ${r.dropped} removed, ${r.ticks_moved} tick${r.ticks_moved === 1 ? '' : 's'} carried over, ${r.ticks_dropped} dropped.`);
-  }
+    if (!ls || !ls.length) return onErr('Those lines have changed since this list was drawn. Reload and try again.');
+    let keepLine = ls.find((l: any) => l.comp_id === compId);
+    const dest = nameOf(compId);
+    const others = ls.filter((l: any) => l.id !== (keepLine?.id ?? ls[0].id)).length;
+    if (!window.confirm(`Say this line once, in ${dest}?\n\n${keepLine ? 'The copy there stays' : 'A copy moves there'} and ${others} other cop${others === 1 ? 'y is' : 'ies are'} removed.`)) return;
 
-  /** Lift it into the core competency, so it is ticked once and never again. */
-  async function toCore(g: any, coreId: number) {
-    const { data: ls } = await supabase.from('competency_lines').select('id,comp_id').in('id', g.line_ids);
-    let keepLine = (ls || []).find((l: any) => l.comp_id === coreId);
-    const rest = () => (ls || []).filter((l: any) => l.id !== keepLine.id).map((l: any) => l.id);
-    if (!window.confirm('Move this line into the core competency and remove it from the others?\n\nOnce it is in the core it only has to be ticked once.')) return;
     setBusy(g.norm);
     if (!keepLine) {
-      // No copy there yet: send the first one across, ticks and all, then clear up the rest.
-      keepLine = (ls || [])[0];
-      const { error } = await supabase.rpc('move_line', { p_line: keepLine.id, p_comp: coreId });
+      keepLine = ls[0];
+      const { error } = await supabase.rpc('move_line', { p_line: keepLine.id, p_comp: compId });
       if (error) { setBusy(''); return onErr(error.message); }
     }
-    const drop = rest();
+    const drop = ls.filter((l: any) => l.id !== keepLine!.id).map((l: any) => l.id);
     let r: any = { dropped: 0, ticks_moved: 0, ticks_dropped: 0 };
     if (drop.length) {
       const { data, error } = await supabase.rpc('resolve_duplicate', { p_keep_line: keepLine.id, p_drop_lines: drop, p_move_ticks: keepTicks });
@@ -291,7 +283,7 @@ function Dups({ keepTicks, onDone, onErr }: any) {
     }
     setBusy('');
     await load();
-    onDone(`Now in the core competency. ${r.dropped} other cop${r.dropped === 1 ? 'y' : 'ies'} removed, ${r.ticks_moved} tick${r.ticks_moved === 1 ? '' : 's'} carried over, ${r.ticks_dropped} dropped.`);
+    onDone(`Now said once, in ${dest}. ${r.dropped} other cop${r.dropped === 1 ? 'y' : 'ies'} removed, ${r.ticks_moved} tick${r.ticks_moved === 1 ? '' : 's'} carried over, ${r.ticks_dropped} dropped.`);
   }
 
   const shown = rows.filter((r) => !hidden.has(r.norm));
@@ -309,16 +301,25 @@ function Dups({ keepTicks, onDone, onErr }: any) {
       {shown.map((g) => (
         <div className="card" key={g.norm} style={{ margin: '0 0 8px' }}>
           <div style={{ fontSize: 14 }}><b>{g.sample}</b></div>
-          <small className="muted">{g.copies} cop{g.copies === 1 ? 'y' : 'ies'} · {g.where_it_is}{g.in_core ? ' · already in a core competency' : ''}</small>
-          <div className="rowflex" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            {core.map((cc: any) => (
-              <button key={cc.id} className="btn small primary" disabled={busy === g.norm}
-                onClick={() => toCore(g, cc.id)}>Say it once, in {cc.name}</button>
-            ))}
-            {(g.comp_ids || []).map((cid: number) => (
-              <button key={cid} className="btn small" disabled={busy === g.norm}
-                onClick={() => keepOnly(g, cid)}>Keep only the copy in {nameOf(cid)}</button>
-            ))}
+          <small className="muted">{g.copies} cop{g.copies === 1 ? 'y' : 'ies'} · {g.where_it_is}</small>
+          <div className="rowflex" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 13.5 }}>Say it once, in</span>
+            <select aria-label="Where this line should live" style={{ minWidth: 220, maxWidth: 320 }}
+              value={dest[g.norm] ?? (core[0]?.id || g.comp_ids?.[0] || 0)}
+              onChange={(e) => setDest((p) => ({ ...p, [g.norm]: +e.target.value }))}>
+              {/* The competencies it is already in first, then everything else. */}
+              <optgroup label="Where it is now">
+                {(g.comp_ids || []).map((cid: number) => <option key={cid} value={cid}>{nameOf(cid)}</option>)}
+              </optgroup>
+              <optgroup label="Anywhere else">
+                {all.filter((c: any) => !(g.comp_ids || []).includes(c.id))
+                  .map((c: any) => <option key={c.id} value={c.id}>{c.name} L{c.level}{c.required_for_all ? ' · core' : ''}</option>)}
+              </optgroup>
+            </select>
+            <button className="btn small primary" disabled={busy === g.norm}
+              onClick={() => sayItIn(g, dest[g.norm] ?? (core[0]?.id || g.comp_ids?.[0] || 0))}>
+              {busy === g.norm ? 'Working…' : 'Do it'}
+            </button>
             <button className="btn small" onClick={() => setHidden((p) => new Set([...p, g.norm]))}>Leave it in all of them</button>
           </div>
         </div>

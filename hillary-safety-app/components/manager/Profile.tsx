@@ -18,15 +18,19 @@ export default function Profile({ base }: any) {
   // The one-off job of copying the paper folders in. While it is on, a click ticks straight away
   // using the initials and date set at the top, with no form in between.
   const [fc, setFc] = useState<any>({ on: false, ini: '', date: '', busy: false });
+  const [monitor, setMonitor] = useState<any>(null);   // the six-monthly monitoring session
   const p = people.find((x: any) => x.id === pid);
 
   const loadPerson = useCallback(async () => {
     if (!pid) return;
-    const [s, q] = await Promise.all([
+    const [s, q, mon] = await Promise.all([
       supabase.from('v_competency_status').select('*').eq('instructor_id', pid).order('level').order('name'),
       supabase.from('qualifications_held').select('*').eq('instructor_id', pid).order('qualification'),
+      // Where they stand on the six-monthly monitoring session. Only current staff appear in the
+      // view, so a contractor or someone who has left simply comes back empty.
+      supabase.from('v_monitoring_due').select('*').eq('instructor_id', pid).maybeSingle(),
     ]);
-    setStat(s.data || []); setQuals(q.data || []);
+    setStat(s.data || []); setQuals(q.data || []); setMonitor(mon.data || null);
   }, [pid]);
   const loadComp = useCallback(async () => {
     if (!pid || !cid) { setLines([]); return; }
@@ -176,7 +180,19 @@ export default function Profile({ base }: any) {
               {current ? <><h3>{current.all.every((s) => s.status === 'Competent') ? 'Level ' + current.lv + ' complete' : 'Working towards Level ' + current.lv}</h3>
                 <div>{current.all.filter((s) => s.status === 'Competent').length} of {current.all.length} competencies Competent</div>
                 <div className="bar"><i style={{ width: (current.all.filter((s) => s.status === 'Competent').length / current.all.length) * 100 + '%' }} /></div></> : <h3>No competencies set up</h3>}
-              <small className="muted">{p.employment} · {base.centres.find((c: any) => c.id === p.centre_id)?.name || 'No centre'}{p.start_date ? ' · started ' + fd(p.start_date) : ''}</small></div>
+              <small className="muted">{p.employment} · {base.centres.find((c: any) => c.id === p.centre_id)?.name || 'No centre'}{p.start_date ? ' · started ' + fd(p.start_date) : ''}</small>
+              {/* The six-monthly monitoring session. Shown only for current staff, because the
+                  rule only applies to them, so a contractor's profile stays quiet. */}
+              {monitor && <div style={{ marginTop: 6 }}>
+                <Pill kind={monitor.state === 'Up to date' ? 'good' : monitor.state === 'Due soon' ? 'warn' : 'bad'}>
+                  Monitoring: {monitor.state.toLowerCase()}
+                </Pill>
+                <small className="muted" style={{ marginLeft: 6 }}>
+                  {monitor.last_on
+                    ? 'last ' + fd(monitor.last_on) + (monitor.due_on ? ' · due ' + fd(monitor.due_on) : '')
+                    : 'no monitoring session on record'}
+                </small>
+              </div>}</div>
             <div className="card"><span className="muted">Qualifications held</span>
               <div style={{ marginTop: 4 }}>{quals.length ? quals.map((q) => (
                 <div key={q.id} className="rowflex" style={{ marginBottom: 4 }}><Pill>{q.qualification}</Pill><small className="muted">{[q.awarded_on && 'awarded ' + fd(q.awarded_on), q.expires_on && 'expires ' + fd(q.expires_on)].filter(Boolean).join(' · ')}</small>
