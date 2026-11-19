@@ -8,6 +8,7 @@ import TrainingLogForm from '@/components/TrainingLogForm';
 import { Mark } from '@/components/Logo';
 import DayBoard from '@/components/DayBoard';
 import AmpMedia from '@/components/AmpMedia';
+import LogDetail from '@/components/LogDetail';
 
 const AMP_FIELDS: [string, string][] = [
   ['activity_description', 'Activity description'], ['location', 'Location'], ['emergency_response', 'Emergency response'],
@@ -248,30 +249,11 @@ function Intent({ me, d, open, reload }: any) {
   );
 }
 
-/** The wording a log's author is allowed to tidy up afterwards. */
-const LOG_EDIT: [string, string, boolean][] = [
-  ['activity_text', 'Activity or pursuit', false], ['location', 'Location', false],
-  ['outcome_comments', 'Comments on the outcome', false],
-  ['summary', 'Summary of the session', true], ['how_it_went', 'How the session went', true],
-  ['weather_conditions', 'Weather and environmental conditions', true],
-  ['self_observation', 'The instructor’s own reflection', true],
-  ['dev_needs', 'Developmental needs identified', true],
-  ['feedback_given', 'Feedback given and next steps', true],
-];
-/** Kept from the Smartsheet years. Shown when a log has them, never asked for again. */
-const LOG_OLD: [string, string][] = [
-  ['session_objectives', 'Session objectives'], ['sms_ok', 'Followed the SMS'],
-  ['sms_comments', 'Comments on hazards and the SMS'], ['next_steps', 'Recommended next steps'],
-  ['client_group', 'Client group present'], ['training_context', 'Clients present'],
-  ['folder_updated', 'Folder updated'],
-];
-
 /** Record a training session, and open any session you are named on. */
 function TrainingLog({ me, d, reload }: any) {
   const [mine, setMine] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
-  const [edit, setEdit] = useState<any>(null);
-  const [done, setDone] = useState(''); const [msg, setMsg] = useState<[string, string]>(['', '']);
+  const [done, setDone] = useState('');
 
   const load = useCallback(async () => {
     // Every session that names you: about you, written by you, or run by you.
@@ -287,96 +269,12 @@ function TrainingLog({ me, d, reload }: any) {
   const role = (l: any) => l.instructor_id === me.id ? 'About you'
     : l.filled_by === me.id ? 'Written by you' : 'You ran it';
 
-  async function saveEdit() {
-    setMsg(['', '']);
-    const patch: any = {};
-    LOG_EDIT.forEach(([k]) => { patch[k] = (edit[k] || '').trim() || null; });
-    ['clients_present', 'students_aware', 'linked_to_frame'].forEach((k) => { patch[k] = edit[k] || null; });
-    const { error } = await supabase.from('training_logs').update(patch).eq('id', sel.id);
-    if (error) return setMsg(['bad', error.message]);
-    setMsg(['ok', 'Saved.']); setSel({ ...sel, ...patch }); setEdit(null); load();
-  }
-
-  if (sel) {
-    const canEdit = sel.filled_by === me.id;
-    return (
-      <>
-        <button className="back" onClick={() => { setSel(null); setEdit(null); setMsg(['', '']); }}>‹ All sessions</button>
-        <div className="card">
-          <div className="rowflex" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <h3 style={{ margin: 0 }}>{fd(sel.date)} · {sel.activity_text || 'Training'}</h3>
-            {sel.outcome ? <Pill kind={STATUS[sel.outcome] || 'mute'}>{sel.outcome}</Pill> : null}
-          </div>
-          <div className="muted" style={{ fontSize: 13 }}>
-            {role(sel)} · trainer {sel.trainer || 'not named'}
-            {sel.days ? ' · ' + sel.days + ' day' + (Number(sel.days) === 1 ? '' : 's') : ''}
-            {sel.ticks_made ? ' · ' + sel.ticks_made + ' boxes ticked' : ''}
-          </div>
-          {(sel.training_log_comps || []).length > 0 && <div style={{ marginTop: 6 }}>
-            {(sel.training_log_comps || []).map((x: any) => <span key={x.comp_id} style={{ marginRight: 6 }}><Pill>{compName(x.comp_id)}</Pill></span>)}
-          </div>}
-        </div>
-
-        {!edit && (
-          <div className="card">
-            <dl>
-              {[['training_type', 'Training type'], ['session_type', 'Type of session'], ['location', 'Location'],
-                ['outcome_comments', 'Comments on the outcome'], ['summary', 'Summary of the session'],
-                ['how_it_went', 'How the session went'], ['weather_conditions', 'Weather and environmental conditions'],
-                ['clients_present', 'Clients present'], ['students_aware', 'Students knew the objective'],
-                ['linked_to_frame', 'Linked to the daily frame'],
-                ['self_observation', 'The instructor’s own reflection'],
-                ['dev_needs', 'Developmental needs identified'],
-                ['feedback_given', 'Feedback given and next steps'],
-                ...LOG_OLD]
-                .filter(([k]) => sel[k])
-                .map(([k, l]) => <span key={k} style={{ display: 'contents' }}><dt>{l}</dt><dd>{sel[k]}</dd></span>)}
-            </dl>
-            <div className={'msg ' + msg[0]}>{msg[1]}</div>
-            {canEdit
-              ? <><button className="btn" onClick={() => setEdit({ ...sel })}>Edit the wording</button>
-                  <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
-                    You can tidy up what you wrote. To change the outcome or the boxes it ticked, ask a
-                    manager to undo the entry — that puts the ticks back and you can write it again.
-                  </p></>
-              : <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-                  Written by {sel.filled_by === sel.instructor_id ? 'the instructor themselves' : 'someone else'}, so only they or a manager can change it.
-                </p>}
-          </div>
-        )}
-
-        {edit && (
-          <div className="card">
-            <h3 style={{ fontSize: 15 }}>Edit the wording</h3>
-            {LOG_EDIT.map(([k, label, big]) => (
-              <span key={k} style={{ display: 'contents' }}>
-                <label className="f" htmlFor={'e-' + k}>{label}</label>
-                {big
-                  ? <textarea id={'e-' + k} rows={3} value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />
-                  : <input id={'e-' + k} type="text" value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
-              </span>
-            ))}
-            {[['clients_present', 'Clients present during the session'], ['students_aware', 'Students knew the objective and it suited them'],
-              ['linked_to_frame', 'Linked to the daily frame']].map(([k, label]) => (
-              <span key={k} style={{ display: 'contents' }}>
-                <label className="f" htmlFor={'e-' + k}>{label}</label>
-                <select id={'e-' + k} value={edit[k] || ''} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })}>
-                  <option value="">—</option><option value="Yes">Yes</option><option value="No">No</option>
-                  {k === 'linked_to_frame' && <option value="Not applicable">Not applicable</option>}
-                </select>
-              </span>
-            ))}
-            <div className={'msg ' + msg[0]}>{msg[1]}</div>
-            <div className="rowflex" style={{ marginTop: 10 }}>
-              <button className="btn primary" onClick={saveEdit}>Save</button>
-              <button className="btn" onClick={() => { setEdit(null); setMsg(['', '']); }}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
-
+  // The same component the manager screen uses, so both sides always show a log the same way.
+  if (sel) return (
+    <LogDetail log={sel} canEdit={sel.filled_by === me.id} subtitle={role(sel)} compName={compName}
+      onBack={() => setSel(null)}
+      onSaved={(next: any) => { setMine((p) => p.map((x) => (x.id === next.id ? { ...x, ...next } : x))); setSel(next); }} />
+  );
   return (
     <>
       {done && <div className="hl">{done}</div>}
