@@ -7,6 +7,7 @@ import { Pill, StatusPill, Picker, Quick, TickGrid } from '@/components/ui';
 import TrainingLogForm from '@/components/TrainingLogForm';
 import { Mark } from '@/components/Logo';
 import DayBoard from '@/components/DayBoard';
+import AmpMedia from '@/components/AmpMedia';
 
 const AMP_FIELDS: [string, string][] = [
   ['activity_description', 'Activity description'], ['location', 'Location'], ['emergency_response', 'Emergency response'],
@@ -487,6 +488,7 @@ function Amps({ d, reload }: any) {
           )}
         </div>
       )}
+      {amp && <AmpMedia ampId={amp.id} />}
       {sel.up_to_date
         ? <div className="card"><div className="check"><span className="dot ok">✓</span>You acknowledged version {sel.version}. Up to date.</div></div>
         : <button className="btn primary" style={{ width: '100%' }} onClick={ack}>I have read and understood this AMP and its incidents</button>}
