@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { INT_SELECT, shapeInt, needsCall, lateMinutes, lateLevel, loadChecks, issues, nzToday, nzNow, fd, hm, Checks } from '@/lib/util';
 import { Pill, Sheet } from '@/components/ui';
@@ -58,24 +58,46 @@ export default function Today({ base, pulse }: any) {
   useEffect(() => { supabase.from('call_options').select('*').order('sort_order').then(({ data }) => setOpts(data || [])); }, []);
   useEffect(() => { load(); }, [load, pulse]);
 
-  async function saveDay(patch: any) {
+  const timer = useRef<any>(null);
+
+  /**
+   * Writes the day sheet. Empty boxes have to go in as null, never as '': an empty string is not a
+   * valid time, and one bad value makes Postgres reject the whole row. That is why the day sheet
+   * never saved at a centre with no sunset box on it.
+   */
+  const pushDay = useCallback(async (next: any) => {
+    const { id, ...fields } = next;
+    const clean = Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v === '' ? null : v]));
+    const { error } = await supabase.from('dm_day_logs')
+      .upsert({ ...clean, date: today, centre_id: centre }, { onConflict: 'date,centre_id' });
+    setErr(error ? error.message : '');
+  }, [today, centre]);
+
+  function saveDay(patch: any) {
     const next = { ...day, ...patch }; setDay(next);
     if (patch.dm_name !== undefined) try { localStorage.setItem('dmName', patch.dm_name); } catch (e) { /* ignore */ }
-    const { id, ...fields } = next;
-    const { error } = await supabase.from('dm_day_logs').upsert({ ...fields, date: today, centre_id: centre }, { onConflict: 'date,centre_id' });
-    if (error) setErr(error.message);
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    pushDay(next);
   }
+
+  /** Typing saves itself a moment after you stop, so a refresh mid-sentence loses nothing. */
+  function typeDay(patch: any) {
+    const next = { ...day, ...patch }; setDay(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { timer.current = null; pushDay(next); }, 900);
+  }
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const text = (k: string, label: string, wide?: boolean, area?: boolean) => (
     <div style={wide ? { gridColumn: '1 / -1' } : undefined}>
       <label className="f" htmlFor={'d-' + k}>{label}</label>
-      {area ? <textarea id={'d-' + k} rows={3} value={day[k]} onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value })} />
-        : <input id={'d-' + k} type="text" value={day[k]} onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value })} />}
+      {area ? <textarea id={'d-' + k} rows={3} value={day[k]} onChange={(e) => typeDay({ [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value })} />
+        : <input id={'d-' + k} type="text" value={day[k]} onChange={(e) => typeDay({ [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value })} />}
     </div>
   );
   const time = (k: string, label: string) => (
     <div><label className="f" htmlFor={'d-' + k}>{label}</label>
       <input id={'d-' + k} type="time" value={day[k] ? String(day[k]).slice(0, 5) : ''}
-        onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value || null })} /></div>
+        onChange={(e) => setDay({ ...day, [k]: e.target.value })} onBlur={(e) => saveDay({ [k]: e.target.value || '' })} /></div>
   );
   const pick = (k: string, label: string, opts: string[]) => (
     <div><label className="f" htmlFor={'d-' + k}>{label}</label>
