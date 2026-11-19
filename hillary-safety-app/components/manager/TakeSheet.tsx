@@ -34,6 +34,7 @@ export default function TakeSheet({ date, centre, centreName, coastal, alpine, o
       ['Day sheet', centreName, fd(date)],
       ['DM', day?.dm_name || '', 'Weather', day?.wx_state || '', day?.forecast || ''],
       ['Weather events', day?.weather_events || 'None'],
+      ...(day?.thunderstorm ? [['Thunderstorms', day.thunderstorm]] : []),
       ...(alpine ? [['Avalanche', day?.avalanche || 'Nil']] : []),
       ['River levels', day?.river_levels || ''],
       ['Closures', day?.closures || 'None'],
@@ -64,6 +65,7 @@ export default function TakeSheet({ date, centre, centreName, coastal, alpine, o
         <div style={{ marginTop: 6 }}>
           {bit('Weather', [day?.wx_state, day?.forecast].filter(Boolean).join(' · '))}
           {bit('Watches and warnings', day?.weather_events)}
+          {bit('Thunderstorms', day?.thunderstorm)}
           {alpine ? bit('Avalanche', day?.avalanche) : null}
           {bit('River levels', day?.river_levels)}
           {bit('Closures', day?.closures)}

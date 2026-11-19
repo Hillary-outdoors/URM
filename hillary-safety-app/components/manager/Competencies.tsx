@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { STATUS } from '@/lib/util';
 import { Pill } from '@/components/ui';
+import CompTools from './CompTools';
 
 const SECTIONS = ['Technical Competence', 'Group Management and Leadership', 'Instruction', 'SMS'];
 const HEAD: [string, string][] = [['scope', 'Scope'], ['prerequisites', 'Prerequisites'], ['assessment', 'Observation and assessment'], ['rcc_rule', 'Recognition of Current Competence']];
@@ -61,6 +62,8 @@ export default function Competencies({ base, reload }: any) {
   }
 
   return (
+    <>
+    <CompTools base={base} reload={async () => { await reload(); load(); }} />
     <div className="mpanel">
       <div className="filters">
         <div style={{ minWidth: 260 }}><label className="f" style={{ marginTop: 0 }} htmlFor="ec">Competency</label>
@@ -117,5 +120,6 @@ export default function Competencies({ base, reload }: any) {
         </>
       )}
     </div>
+    </>
   );
 }

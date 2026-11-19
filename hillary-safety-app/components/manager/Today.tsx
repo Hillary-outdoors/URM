@@ -6,6 +6,7 @@ import { Pill, Sheet } from '@/components/ui';
 import IntentionTable from './IntentionTable';
 import DayConditions from './DayConditions';
 import TakeSheet from './TakeSheet';
+import DayHistory from './DayHistory';
 import { IntentionSheet, AddIntention } from './IntentionSheet';
 
 const DAY0 = { dm_name: '', wx_state: 'Green', wx_events: 'None', avalanche: 'Nil', closures: '', wx_notes: '',
@@ -19,7 +20,7 @@ export default function Today({ base, pulse }: any) {
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} });
   const [sel, setSel] = useState<any>(null); const [adding, setAdding] = useState(false); const [calling, setCalling] = useState(0);
   const [c, setC] = useState({ time: '', who: '', entry: '' }); const [err, setErr] = useState('');
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState(false); const [past, setPast] = useState(false);
   const [opts, setOpts] = useState<any[]>([]);          // the call list, from the database
   const [calls, setCalls] = useState<Record<number, any[]>>({});
   const [note, setNote] = useState('');                 // free text for a call that is not on the list
@@ -133,6 +134,11 @@ export default function Today({ base, pulse }: any) {
         alpine={!!here?.alpine} onClose={() => setSheet(false)} />
     </div>
   );
+  if (past) return (
+    <div className="mpanel">
+      <DayHistory centre={centre} centreName={here?.name || ''} onClose={() => setPast(false)} />
+    </div>
+  );
 
   return (
     <>
@@ -142,6 +148,7 @@ export default function Today({ base, pulse }: any) {
           <h3 style={{ fontSize: 16, alignSelf: 'center' }}>Day sheet · {fd(today)}</h3>
           <div><div className="seg">{base.centres.map((x: any) => <button key={x.id} className={centre === x.id ? 'on' : ''} onClick={() => { setCentre(x.id); try { localStorage.setItem('centre', String(x.id)); } catch (e) { /* ignore */ } }}>{x.name}</button>)}</div></div>
           <button className="btn" onClick={() => setSheet(true)}>Take sheet</button>
+          <button className="btn" onClick={() => setPast(true)}>Past days</button>
           <div className="muted" style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 13 }}>Saves as you go</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '0 14px' }}>
