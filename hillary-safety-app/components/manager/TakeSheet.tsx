@@ -24,7 +24,7 @@ export default function TakeSheet({ date, centre, centreName, coastal, alpine, o
   useEffect(() => { load(); }, [load]);
 
   function csv() {
-    const cols = ['group_name', 'pax', 'instructors', 'activities', 'plan', 'outcome_of_day',
+    const cols = ['group_name', 'pax', 'instructors', 'activities', 'plan', 'outcome_of_day', 'weather_note',
       'started_at', 'due_by', 'calls_required', 'calls_always', 'calls_made',
       'take_with_you', 'other_resources', 'emergency_response'];
     const head = ['Group', 'Pax', 'Instructors', 'Activities', 'Plan', 'Aim of the day',
@@ -90,6 +90,7 @@ export default function TakeSheet({ date, centre, centreName, coastal, alpine, o
             {bit('Activities', r.activities)}
             {bit('Plan', r.plan)}
             {bit('Aim of the day', r.outcome_of_day)}
+            {bit('Weather, from the instructor', r.weather_note)}
             {bit('Calls', [r.calls_required, r.calls_always].filter(Boolean).join(' · '))}
             {bit('Calls made', r.calls_made)}
             {bit('Take with you', r.take_with_you)}

@@ -22,6 +22,8 @@ export default function IntentionTable({ rows, base, checks, showDate, onOpen, a
                 <td>{i.acts.map(an).join(' + ')}
                   {i.plan && <div><small className="muted">{i.plan}</small></div>}
                   {i.outcome_of_day && <div><small>Outcome of the day: {i.outcome_of_day}</small></div>}
+                  {/* What the instructor saw out there, next to the DM's own forecast. */}
+                  {i.weather_note && <div><small className="muted">Weather: {i.weather_note}</small></div>}
                   {i.debrief_notes && <div><small>Notes: {i.debrief_notes}</small></div>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {call ? <>{i.started_at ? 'Started ' + hm(i.started_at) : 'Not started yet'}{i.due_by && <div>due {hm(i.due_by)}</div>}</> : <small className="muted">No call-in needed</small>}

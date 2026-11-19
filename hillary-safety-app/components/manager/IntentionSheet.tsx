@@ -29,7 +29,7 @@ async function noteOnDaySheet(date: string, centre_id: number, line: string, rep
 
 /** Open one intention: see it, change any part of it, approve it, log calls. */
 export function IntentionSheet({ intention: i, base, onDone }: { intention: any; base: any; onDone: () => void }) {
-  const [d, setD] = useState<any>({ who: i.who, acts: i.acts, overnight: i.overnight, started_at: hm(i.started_at), due_by: hm(i.due_by), pax: i.pax ?? '', outcome_of_day: i.outcome_of_day || '', plan: i.plan || '', group_name: i.group_name || '', dm_notes: i.dm_notes || '', briefed: i.briefed });
+  const [d, setD] = useState<any>({ who: i.who, acts: i.acts, overnight: i.overnight, started_at: hm(i.started_at), due_by: hm(i.due_by), pax: i.pax ?? '', outcome_of_day: i.outcome_of_day || '', plan: i.plan || '', weather_note: i.weather_note || '', group_name: i.group_name || '', dm_notes: i.dm_notes || '', briefed: i.briefed });
   const [judge, setJudge] = useState(''); const [judge0, setJudge0] = useState('');
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} }); const [comms, setComms] = useState<any[]>([]); const [err, setErr] = useState('');
   const [opts, setOpts] = useState<any[]>([]);   // the call list, from the database
@@ -54,6 +54,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     c('overnight', i.overnight ? 'yes' : 'no', d.overnight ? 'yes' : 'no');
     c('started', hm(i.started_at), d.started_at); c('due', hm(i.due_by), d.due_by);
     c('participants', i.pax, d.pax); c('outcome of the day', i.outcome_of_day, d.outcome_of_day); c('plan', i.plan, d.plan);
+    c('weather note', i.weather_note, d.weather_note);
     return o;
   }
   async function save(extra: any = {}) {
@@ -61,7 +62,8 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
     const df = diffs();
     const { error } = await supabase.from('intentions').update({
       overnight: d.overnight, started_at: d.started_at || null, due_by: d.due_by || null, pax: d.pax === '' ? null : +d.pax,
-      outcome_of_day: d.outcome_of_day, plan: d.plan, group_name: d.group_name, dm_notes: d.dm_notes, briefed: d.briefed, ...extra,
+      outcome_of_day: d.outcome_of_day, plan: d.plan, weather_note: d.weather_note || null,
+      group_name: d.group_name, dm_notes: d.dm_notes, briefed: d.briefed, ...extra,
     }).eq('id', i.id);
     if (error) { setErr(error.message); return false; }
     if (String([...i.who].sort()) !== String([...d.who].sort()) || String([...i.acts].sort()) !== String([...d.acts].sort())) {
@@ -110,6 +112,8 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
       </div>
       <label className="f" htmlFor="ea">Outcome of the day</label><input id="ea" type="text" value={d.outcome_of_day} onChange={(e) => set('outcome_of_day', e.target.value)} />
       <label className="f" htmlFor="epl">Plan or route</label><textarea id="epl" rows={2} value={d.plan} onChange={(e) => set('plan', e.target.value)} />
+      <label className="f" htmlFor="ewx">A comment on the weather (optional)</label>
+      <input id="ewx" type="text" value={d.weather_note} onChange={(e) => set('weather_note', e.target.value)} placeholder="What the instructor is seeing out there" />
       {!!is.length && <div className="inc"><b>To check</b>{is.map((x) => <div key={x}>{x}</div>)}</div>}
       <ExtraReqs base={base} intentionId={i.id} who={d.who} />
       <div style={{ marginTop: 10 }}><Matrix who={d.who.map((w: string) => ({ id: w, name: nm(w) }))} acts={d.acts.map((a: number) => ({ id: a, name: an(a) }))} checks={checks} /></div>
@@ -137,7 +141,7 @@ export function IntentionSheet({ intention: i, base, onDone }: { intention: any;
 /** Add an intention for an instructor, today or for a day that has passed. */
 export function AddIntention({ base, centreId, onDone }: { base: any; centreId: number; onDone: (date?: string) => void }) {
   const today = nzToday();
-  const [d, setD] = useState<any>({ date: today, who: [], acts: [], overnight: false, started_at: '', due_by: '15:00', pax: '12', outcome_of_day: '', plan: '', group_name: '' });
+  const [d, setD] = useState<any>({ date: today, who: [], acts: [], overnight: false, started_at: '', due_by: '15:00', pax: '12', outcome_of_day: '', plan: '', weather_note: '', group_name: '' });
   const [checks, setChecks] = useState<Checks>({ comp: {}, amp: {} }); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const set = (k: string, v: any) => setD((x: any) => ({ ...x, [k]: v }));
   useEffect(() => { loadChecks(d.who, d.acts).then(setChecks); }, [d.who, d.acts]);
@@ -149,7 +153,7 @@ export function AddIntention({ base, centreId, onDone }: { base: any; centreId: 
     if (!d.who.length || !d.acts.length) return setErr('Add at least one instructor and one activity.');
     setBusy(true);
     const row: any = {
-      centre_id: centreId, date: d.date, overnight: d.overnight, pax: d.pax === '' ? null : +d.pax, outcome_of_day: d.outcome_of_day, plan: d.plan, group_name: d.group_name,
+      centre_id: centreId, date: d.date, overnight: d.overnight, pax: d.pax === '' ? null : +d.pax, outcome_of_day: d.outcome_of_day, plan: d.plan, weather_note: d.weather_note || null, group_name: d.group_name,
       due_by: d.due_by || null, dm_notes: 'Entered by manager',
     };
     if (past) Object.assign(row, { status: 'Closed', entered_late: true, briefed: true, started_at: d.started_at || null, called_in_at: d.due_by || null, called_in_as: 'Back at base' });
@@ -184,6 +188,8 @@ export function AddIntention({ base, centreId, onDone }: { base: any; centreId: 
       <Quick items={AIM_QUICK} onPick={(t) => set('outcome_of_day', d.outcome_of_day.trim() ? d.outcome_of_day.trim() + ', ' + t : t)} />
       <label className="f" htmlFor="npl">Plan</label><textarea id="npl" rows={2} value={d.plan} onChange={(e) => set('plan', e.target.value)} />
       <Quick items={PLAN_QUICK} onPick={(t) => set('plan', d.plan.trim() ? d.plan.trim() + ' – ' + t : t)} />
+      <label className="f" htmlFor="nwx">A comment on the weather (optional)</label>
+      <input id="nwx" type="text" value={d.weather_note} onChange={(e) => set('weather_note', e.target.value)} placeholder="What the instructor is seeing out there" />
       <div className="msg bad">{err}</div>
       <button className="btn primary" disabled={busy} onClick={save}>{past ? 'Save to history' : 'Add to board'}</button>
     </>

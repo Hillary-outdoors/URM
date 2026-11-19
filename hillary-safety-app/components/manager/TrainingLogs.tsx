@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { fd, STATUS, downloadCsv, fetchAll } from '@/lib/util';
 import { Pill, Picker } from '@/components/ui';
 import TrainingLogForm from '@/components/TrainingLogForm';
+import LogDetail from '@/components/LogDetail';
 
 const dmName = () => { try { return localStorage.getItem('dmName') || ''; } catch (e) { return ''; } };
 
@@ -18,6 +19,7 @@ export default function TrainingLogs({ base, reload }: any) {
   const [who, setWho] = useState<string[]>([]);
   const [onlySelf, setOnlySelf] = useState(false);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState('');
+  const [sel, setSel] = useState<any>(null);   // the entry being read, when one is open
   const people = base.instructors.filter((p: any) => p.account_type === 'instructor');
   const me = base.me;   // the signed-in manager; the form records them as the author
 
@@ -90,14 +92,23 @@ export default function TrainingLogs({ base, reload }: any) {
         onDone={(m: string) => { setDone(m); setTab('logs'); load(); reload?.(); }} />
         : <p className="muted">Loading…</p>)}
 
-      {tab === 'logs' && (onlySelf && shown.length === 0
+      {/* An entry opened up. A manager may correct the wording on any of them. */}
+      {tab === 'logs' && sel && (
+        <LogDetail log={sel} canEdit compName={(id: number) => { const c = compOf(id); return c ? c.name + ' L' + c.level : ''; }}
+          subtitle={nameOf(sel.instructor_id) + (sel.filled_by ? ', written by ' + nameOf(sel.filled_by) : ', from Smartsheet')}
+          onBack={() => setSel(null)}
+          onSaved={(next: any) => { setLogs((p) => p.map((x) => (x.id === next.id ? { ...x, ...next } : x))); setSel(next); }}
+          actions={sel.ticks_made ? <button className="btn small" disabled={busy} onClick={async () => { await undo(sel); setSel(null); }}>Undo this entry and put the ticks back</button> : undefined} />
+      )}
+
+      {tab === 'logs' && !sel && (onlySelf && shown.length === 0
         ? <p className="muted">No entries were written by the person they are about. Nothing to check.</p>
         : shown.length ? <div className="scroll"><table className="m">
         <thead><tr><th>Date</th><th>Instructor</th><th>Trainer</th><th>Written by</th><th>Activity</th><th>Outcome</th><th>Ticked</th><th></th></tr></thead>
         <tbody>{shown.map((l) => {
           const comps = (l.training_log_comps || []).map((x: any) => compOf(x.comp_id)).filter(Boolean);
           const selfWritten = l.filled_by && l.filled_by === l.instructor_id;
-          return <tr key={l.id}>
+          return <tr key={l.id} onClick={() => setSel(l)} style={{ cursor: 'pointer' }} title="Open this entry">
             <td>{fd(l.date)}</td><td><b>{nameOf(l.instructor_id)}</b></td><td>{l.trainer || ''}</td>
             <td>{l.filled_by ? (selfWritten ? <Pill kind="warn">{nameOf(l.filled_by)}</Pill> : nameOf(l.filled_by)) : <small className="muted">Smartsheet</small>}</td>
             <td>{l.activity_text || ''}{l.location ? <><br /><small className="muted">{l.location}</small></> : null}</td>
@@ -106,7 +117,8 @@ export default function TrainingLogs({ base, reload }: any) {
               ? <>{comps.map((c: any) => <span key={c.id} style={{ marginRight: 6 }}><Pill kind="good">{c.name} L{c.level}</Pill></span>)}
                   <small className="muted">{l.ticks_made || 0} boxes</small></>
               : <small className="muted">{['Competent', 'Indirect', 'Direct'].includes(l.outcome) ? 'nothing left to tick' : 'recorded only'}</small>}</td>
-            <td>{l.ticks_made ? <button className="btn small" disabled={busy} onClick={() => undo(l)}>Undo</button> : null}</td>
+            {/* stopPropagation: Undo must not also open the entry behind the confirm box. */}
+            <td onClick={(e) => e.stopPropagation()}>{l.ticks_made ? <button className="btn small" disabled={busy} onClick={() => undo(l)}>Undo</button> : null}</td>
           </tr>;
         })}</tbody>
       </table></div> : <p className="muted">No entries yet. Use "Record a session".</p>)}
